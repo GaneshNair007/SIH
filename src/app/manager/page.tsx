@@ -2,19 +2,72 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, LogOut, Users, UserPlus, Search, Plus } from "lucide-react";
+import { ShieldCheck, LogOut, Users, UserPlus, Search, Plus, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { toast } from "sonner";
+import { motion } from "framer-motion";
+
+const workerSchema = z.object({
+  full_name: z.string().min(2, "Name is required"),
+  worker_code: z.string().min(2, "Worker ID is required"),
+  employee_hr_id: z.string().optional(),
+  phone: z.string().optional(),
+  department: z.string().optional(),
+  designation: z.string().optional(),
+  plant_id: z.string().optional(),
+  default_region_id: z.string().optional(),
+  default_work_area_id: z.string().optional(),
+});
+
+type WorkerFormData = z.infer<typeof workerSchema>;
 
 export default function ManagerDashboard() {
   const [activeTab, setActiveTab] = useState<"view" | "add">("view");
-  const [showSuccess, setShowSuccess] = useState(false);
+  const queryClient = useQueryClient();
 
-  const handleAddWorker = (e: React.FormEvent) => {
-    e.preventDefault();
-    setShowSuccess(true);
-    setTimeout(() => {
-      setShowSuccess(false);
+  // Fetch workers
+  const { data: workers, isLoading } = useQuery({
+    queryKey: ['workers'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('workers')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<WorkerFormData>({
+    resolver: zodResolver(workerSchema)
+  });
+
+  // Add Worker Mutation
+  const addWorkerMutation = useMutation({
+    mutationFn: async (data: WorkerFormData) => {
+      const { error } = await supabase.from('workers').insert({
+        ...data,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Worker added successfully!");
+      queryClient.invalidateQueries({ queryKey: ['workers'] });
+      reset();
       setActiveTab("view");
-    }, 2000);
+    },
+    onError: (error) => {
+      toast.error(`Error: ${error.message}`);
+    }
+  });
+
+  const onSubmit = (data: WorkerFormData) => {
+    addWorkerMutation.mutate(data);
   };
 
   return (
@@ -56,7 +109,7 @@ export default function ManagerDashboard() {
 
         {/* CONTENT */}
         {activeTab === "view" ? (
-          <div className="space-y-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
             <div className="flex justify-between items-center gap-4 flex-wrap">
               <h2 className="text-2xl font-bold text-white">Active Workforce</h2>
               <div className="relative w-full md:w-64">
@@ -69,119 +122,95 @@ export default function ManagerDashboard() {
               </div>
             </div>
 
-            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-700 bg-slate-900/50">
-                    <th className="p-4 font-bold text-slate-400">Worker</th>
-                    <th className="p-4 font-bold text-slate-400">ID & Band</th>
-                    <th className="p-4 font-bold text-slate-400">Department</th>
-                    <th className="p-4 font-bold text-slate-400">Latest Exposure</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700">
-                  {[
-                    { name: "John Doe", id: "EMP-1042", band: "H2S-001", dept: "Maintenance", exp: "4.8–6.2 ppm•h", status: "safe" },
-                    { name: "Sarah Smith", id: "EMP-1193", band: "H2S-002", dept: "Operations", exp: "12.0–15.5 ppm•h", status: "warning" },
-                    { name: "Michael Chen", id: "EMP-1088", band: "H2S-003", dept: "Maintenance", exp: "2.1–3.5 ppm•h", status: "safe" },
-                    { name: "David Wilson", id: "EMP-0932", band: "H2S-004", dept: "Logistics", exp: "8.5–10.0 ppm•h", status: "safe" },
-                  ].map((w, i) => (
-                    <tr key={i} className="hover:bg-slate-700/50 transition-colors cursor-pointer">
-                      <td className="p-4 font-medium text-white flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs">{w.name.charAt(0)}</div>
-                        {w.name}
-                      </td>
-                      <td className="p-4">
-                        <div className="text-white">{w.id}</div>
-                        <div className="text-xs text-cyan-400 font-mono mt-1">Band: {w.band}</div>
-                      </td>
-                      <td className="p-4 text-slate-400">{w.dept}</td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                          w.status === 'warning' ? 'bg-yellow-900/30 text-yellow-400 border-yellow-700/50' : 'bg-slate-900 text-slate-300 border-slate-700'
-                        }`}>
-                          {w.exp}
-                        </span>
-                      </td>
+            <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden min-h-[300px]">
+              {isLoading ? (
+                <div className="flex justify-center items-center h-64">
+                  <Loader2 className="animate-spin text-cyan-500" size={32} />
+                </div>
+              ) : workers?.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-500">
+                  <Users size={48} className="mb-4 opacity-30" />
+                  <p>No workers found in database.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-900/50">
+                      <th className="p-4 font-bold text-slate-400">Worker</th>
+                      <th className="p-4 font-bold text-slate-400">ID</th>
+                      <th className="p-4 font-bold text-slate-400">Department</th>
+                      <th className="p-4 font-bold text-slate-400">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700">
+                    {workers?.map((w: any, i: number) => (
+                      <tr key={i} className="hover:bg-slate-700/50 transition-colors cursor-pointer">
+                        <td className="p-4 font-medium text-white flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs">{w.full_name?.charAt(0) || '?'}</div>
+                          {w.full_name}
+                        </td>
+                        <td className="p-4">
+                          <div className="text-white font-mono">{w.worker_code}</div>
+                        </td>
+                        <td className="p-4 text-slate-400">{w.department || '-'}</td>
+                        <td className="p-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-green-900/30 text-green-400 border-green-700/50">
+                            {w.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          </div>
+          </motion.div>
         ) : (
-          <div className="max-w-2xl bg-slate-800 border border-slate-700 rounded-xl p-8">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl bg-slate-800 border border-slate-700 rounded-xl p-8">
             <h2 className="text-2xl font-bold text-white mb-6">Register New Worker</h2>
-            
-            {showSuccess && (
-              <div className="bg-green-900/30 border border-green-700 text-green-400 p-4 rounded-lg mb-6 flex items-center gap-2">
-                <ShieldCheck size={20} /> Worker successfully added to the system.
-              </div>
-            )}
 
-            <form className="space-y-6" onSubmit={handleAddWorker}>
+            <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Full Name *</label>
-                  <input required type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  <input {...register("full_name")} type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  {errors.full_name && <p className="text-red-400 text-xs mt-1">{errors.full_name.message}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Worker ID *</label>
-                  <input required type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  <input {...register("worker_code")} type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  {errors.worker_code && <p className="text-red-400 text-xs mt-1">{errors.worker_code.message}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Employee/HR ID</label>
-                  <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  <input {...register("employee_hr_id")} type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Phone Number</label>
-                  <input type="tel" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  <input {...register("phone")} type="tel" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Department</label>
-                  <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
+                  <input {...register("department")} type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Designation</label>
-                  <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
-                </div>
-                
-                <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-700">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Plant</label>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500 appearance-none">
-                      <option>Main Refinery</option>
-                      <option>Chemical Plant B</option>
-                      <option>Offshore Rig</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Region</label>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500 appearance-none">
-                      <option>North</option>
-                      <option>South</option>
-                      <option>East</option>
-                      <option>West</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">Work Area</label>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500 appearance-none">
-                      <option>Zone 1 (High Risk)</option>
-                      <option>Zone 2 (Medium Risk)</option>
-                      <option>Zone 3 (Low Risk)</option>
-                    </select>
-                  </div>
+                  <input {...register("designation")} type="text" className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-cyan-500" />
                 </div>
               </div>
               
               <div className="pt-6">
-                <button type="submit" className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-colors">
-                  <Plus size={18} /> Submit New Worker
+                <button 
+                  type="submit" 
+                  disabled={addWorkerMutation.isPending}
+                  className="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {addWorkerMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                  Submit New Worker
                 </button>
               </div>
             </form>
-          </div>
+          </motion.div>
         )}
       </main>
     </div>
