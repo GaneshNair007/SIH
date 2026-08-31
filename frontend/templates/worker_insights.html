@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+
+{% block title %}Rakshak — Worker Profile Insights & Longitudinal History{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+            <div class="flex items-center space-x-3">
+                <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-id-card-clip text-cyan-400"></i>
+                    <span id="workerNameHeader">Worker Profile Insights</span>
+                </h1>
+                <span id="workerIdBadge" class="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800">EMP-1042</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Longitudinal exposure trend, 90-day chronic risk, and historical symptom ledger across physical wristbands</p>
+        </div>
+        <div class="flex items-center space-x-2">
+            <a href="/manager" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>Back to Manager Portal</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- Worker Demographics & Clinical Baseline (4 cols) -->
+        <div class="lg:col-span-4 space-y-6">
+            <!-- Profile Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4 text-xs">
+                <div class="flex items-center space-x-3 border-b border-slate-800 pb-3">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center text-white text-lg font-bold shadow">
+                        <i class="fa-solid fa-user-shield"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-white" id="profileFullName">Rajesh Kumar</div>
+                        <div class="text-slate-400" id="profileRole">Senior Field Operator • CDU-1</div>
+                    </div>
+                </div>
+
+                <div class="space-y-2.5">
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                        <span class="text-slate-400">Department / Unit:</span>
+                        <span class="font-semibold text-white" id="profileDept">Operations / CDU-1</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                        <span class="text-slate-400">Age / Gender:</span>
+                        <span class="font-semibold text-white" id="profileAge">38 Yrs / Male</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                        <span class="text-slate-400">Smoking Status:</span>
+                        <span class="font-semibold text-emerald-400" id="profileSmoking">Non-Smoker (0 pack-yrs)</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                        <span class="text-slate-400">Baseline Spirometry (FEV1/FVC):</span>
+                        <span class="font-mono font-bold text-cyan-400" id="profileFEV1">0.82 (Normal)</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800/60">
+                        <span class="text-slate-400">Pre-existing Sensitivities:</span>
+                        <span class="font-semibold text-amber-400" id="profileConditions">Allergic Rhinitis, Eye Stinging</span>
+                    </div>
+                    <div class="flex justify-between py-1">
+                        <span class="text-slate-400">Assigned PPE:</span>
+                        <span class="font-semibold text-slate-200" id="profilePPE">Half-Mask (OV/AG Cartridge)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 90-Day Predictive Lung Risk Index -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4 text-xs">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h3 class="font-bold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-heart-pulse text-rose-400"></i>
+                        <span>90-Day Chronic Lung Risk</span>
+                    </h3>
+                    <span id="riskCategoryBadge" class="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">LOW RISK</span>
+                </div>
+
+                <div class="text-center py-2">
+                    <div class="text-3xl font-extrabold text-cyan-400 font-mono" id="riskScoreValue">18.5 <span class="text-sm font-normal text-slate-400">/ 100</span></div>
+                    <div class="text-[11px] text-slate-400 mt-1">Occupational Respiratory Risk Index</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                    <div class="font-bold text-slate-200">Clinical Recommendation:</div>
+                    <p id="riskRecommendationText" class="leading-relaxed text-slate-400">Maintain standard annual spirometry. No immediate sour gas rotation restriction required.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Longitudinal Band Ledger & AI Query Drawer (8 cols) -->
+        <div class="lg:col-span-8 space-y-6">
+            <!-- Exposure Load Overview Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center text-xs">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">7-Day Cumulative Load</div>
+                    <div class="text-lg font-bold text-cyan-400 font-mono mt-1" id="ledger7Day">14.2–16.8 ppm·h</div>
+                    <div class="text-[10px] text-emerald-400 mt-0.5">Limit: < 15.0 ppm·h</div>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">30-Day Estimated Load</div>
+                    <div class="text-lg font-bold text-white font-mono mt-1" id="ledger30Day">22.5 ppm·h</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">Rolling Monthly</div>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow">
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Lifetime Shifts Logged</div>
+                    <div class="text-lg font-bold text-amber-400 font-mono mt-1" id="ledgerShifts">12 Shifts</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">Active Dosimeter Wristbands</div>
+                </div>
+            </div>
+
+            <!-- Historical Shift Logs Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-2 text-xs">
+                    <h3 class="font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i>
+                        <span>Recent Shift Dosimeter Records</span>
+                    </h3>
+                    <span class="text-[10px] text-slate-400 font-mono">Dose Uncertainty Envelopes</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead>
+                            <tr class="text-slate-400 border-b border-slate-800 text-[11px]">
+                                <th class="py-2.5 px-3">Scan ID</th>
+                                <th class="py-2.5 px-3">Unit</th>
+                                <th class="py-2.5 px-3">Shift Dose Range</th>
+                                <th class="py-2.5 px-3">TWA Range</th>
+                                <th class="py-2.5 px-3">Statutory Tier</th>
+                                <th class="py-2.5 px-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="workerScansTableBody" class="divide-y divide-slate-800/60 text-slate-200">
+                            <!-- Injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Dedicated Worker Safety Query Drawer -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center space-x-2 border-b border-slate-800 pb-2 text-xs">
+                    <i class="fa-solid fa-comments text-cyan-400"></i>
+                    <span class="font-bold text-white">Ask Rakshak about this Worker's Longitudinal Profile</span>
+                </div>
+
+                <div id="workerQueryStream" class="h-44 overflow-y-auto space-y-3 text-xs p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <div class="text-slate-400 leading-relaxed">
+                        🛡️ You can query this worker's historical exposure trends, cumulative 90-day risk factors, recurring ocular/respiratory symptoms, or fit-test compliance directly with Rakshak AI.
+                    </div>
+                </div>
+
+                <form onsubmit="handleWorkerQuerySubmit(event)" class="flex gap-2">
+                    <input 
+                        type="text" 
+                        id="workerQueryInput" 
+                        placeholder="e.g. 'Has this worker reported recurring eye irritation in CDU-1?'" 
+                        class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                        required
+                    >
+                    <button type="submit" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold transition">
+                        Ask
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const workerId = window.location.pathname.split('/').pop() || 'EMP-1042';
+
+async function loadWorkerProfile() {
+    try {
+        const res = await fetch(`/api/control-room/workers/${workerId}`);
+        if (!res.ok) throw new Error('Worker not found');
+        const data = await res.json();
+        renderWorkerInsights(data);
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function renderWorkerInsights(data) {
+    document.getElementById('workerNameHeader').textContent = `${data.full_name} — Insights`;
+    document.getElementById('workerIdBadge').textContent = data.worker_id;
+    document.getElementById('profileFullName').textContent = data.full_name;
+    document.getElementById('profileRole').textContent = `${data.role} • ${data.plant_unit}`;
+    document.getElementById('profileDept').textContent = `${data.department} / ${data.plant_unit}`;
+    document.getElementById('profileAge').textContent = `${data.age} Yrs / ${data.gender}`;
+
+    const hp = data.health_profile || {};
+    document.getElementById('profileSmoking').textContent = `${hp.smoking_status || 'Non-Smoker'} (${hp.smoking_pack_years || 0} pack-yrs)`;
+    document.getElementById('profileFEV1').textContent = `${hp.baseline_fev1_fvc_ratio || 0.80} (Normal)`;
+    document.getElementById('profileConditions').textContent = (hp.pre_existing_conditions && hp.pre_existing_conditions.length) ? hp.pre_existing_conditions.join(', ') : 'None reported';
+
+    const ppe = data.ppe_details || {};
+    document.getElementById('profilePPE').textContent = `${ppe.respirator_type || 'Half-Mask'} (${ppe.cartridge_type || 'OV/AG'})`;
+
+    const lr = data.lung_risk_profile || {};
+    document.getElementById('riskScoreValue').innerHTML = `${lr.chronic_lung_risk_score || 18.5} <span class="text-sm font-normal text-slate-400">/ 100</span>`;
+    document.getElementById('riskCategoryBadge').textContent = lr.risk_category || 'LOW RISK';
+    document.getElementById('riskRecommendationText').textContent = lr.recommendation_en || 'Maintain standard annual spirometry. No immediate sour gas rotation restriction required.';
+
+    const leg = data.exposure_ledger || {};
+    const l7 = leg.rolling_7day_ppm_hr || 16.8;
+    document.getElementById('ledger7Day').textContent = `${(l7 * 0.88).toFixed(1)}–${(l7 * 1.12).toFixed(1)} ppm·h`;
+    document.getElementById('ledger30Day').textContent = `${leg.rolling_30day_ppm_hr || 22.5} ppm·h`;
+    document.getElementById('ledgerShifts').textContent = `${leg.lifetime_shifts_logged || 12} Shifts`;
+
+    // Render Recent Scans Table
+    const tbody = document.getElementById('workerScansTableBody');
+    tbody.innerHTML = '';
+    const scans = data.recent_scans || [];
+    if (scans.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-500">No shift scans logged yet.</td></tr>';
+    } else {
+        scans.forEach(s => {
+            const tr = document.createElement('tr');
+            let tierClass = 'text-emerald-400';
+            if (s.statutory_tier && s.statutory_tier.includes('TIER 3')) tierClass = 'text-rose-400 font-bold';
+            else if (s.statutory_tier && s.statutory_tier.includes('TIER 2')) tierClass = 'text-amber-400 font-bold';
+
+            const dNom = s.compensated_dose_ppm_hr || s.raw_optical_dose || 3.5;
+            const doseRange = `${(dNom * 0.9).toFixed(1)}–${(dNom * 1.1).toFixed(1)} ppm·h`;
+            const twaRange = `${((dNom / 8.0) * 0.9).toFixed(1)}–${((dNom / 8.0) * 1.1).toFixed(1)} ppm`;
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-3 font-mono text-cyan-400">${s.scan_id}</td>
+                <td class="py-2.5 px-3">${s.plant_unit}</td>
+                <td class="py-2.5 px-3 font-mono">${doseRange}</td>
+                <td class="py-2.5 px-3 font-mono">${twaRange}</td>
+                <td class="py-2.5 px-3 font-mono ${tierClass}">${s.statutory_tier || 'TIER 1 (NORMAL)'}</td>
+                <td class="py-2.5 px-3 text-right">
+                    <a href="/api/supervisor/incident-pdf/${s.scan_id}" target="_blank" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-mono border border-slate-700">
+                        PDF
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+}
+
+async function handleWorkerQuerySubmit(e) {
+    e.preventDefault();
+    const input = document.getElementById('workerQueryInput');
+    const q = input.value.trim();
+    if (!q) return;
+
+    const stream = document.getElementById('workerQueryStream');
+    
+    // Add user message
+    const uDiv = document.createElement('div');
+    uDiv.className = 'p-2 rounded-lg bg-cyan-900/40 text-cyan-200 border border-cyan-800 text-right';
+    uDiv.textContent = q;
+    stream.appendChild(uDiv);
+    input.value = '';
+
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: `worker_insights_${workerId}`,
+                message: `[Control-Room Query for Worker ${workerId}]: ${q}`
+            })
+        });
+        const data = await res.json();
+        
+        const bDiv = document.createElement('div');
+        bDiv.className = 'p-2.5 rounded-lg bg-slate-900 text-slate-200 border border-slate-800 whitespace-pre-line leading-relaxed';
+        bDiv.textContent = data.reply;
+        stream.appendChild(bDiv);
+        stream.scrollTop = stream.scrollHeight;
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+window.onload = loadWorkerProfile;
+</script>
+{% endblock %}

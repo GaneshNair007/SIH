@@ -1,35 +1,69 @@
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
 def utc_now():
     return datetime.now(timezone.utc)
 
-class BadgeData(BaseModel):
-    badge_id: str = Field(..., description="Unique dosimeter wristband barcode/RFID")
-    delta_e: float = Field(..., description="Raw optical color difference (delta E) measured by colorimeter")
-    shelf_life_status: Literal["VALID", "EXPIRED", "WARNING"] = Field(default="VALID", description="Dosimeter substrate validity")
-    raw_optical_dose: float = Field(..., description="Uncompensated raw dose reading in ppm·hr derived from delta E calibration curve")
+PatchCondition = Literal["NORMAL", "WARNING", "COMPROMISED"]
+MeasurementConfidence = Literal["HIGH", "MEDIUM", "LOW", "INVALID"]
 
-class EnvironmentalTelemetry(BaseModel):
-    latitude: float = Field(default=12.9904, description="Plant latitude")
+class BadgeData(BaseModel):
+    badge_id: str = Field(..., description="Unique dosimeter wristband barcode/RFID, e.g., BAND-H2S-0842")
+    band_lifecycle_day: int = Field(default=1, ge=1, le=5, description="Day of band deployment (max 5-day lifecycle)")
+    
+    # Differential Exposure Readings (Irreversible chemical darkening)
+    start_optical_density: float = Field(default=0.0, ge=0.0, description="Optical density at start of shift (ΔE_start)")
+    end_optical_density: float = Field(..., ge=0.0, description="Optical density at end of shift (ΔE_end)")
+    
+    # Integrity & Tamper Checks
+    patch_b_drift: float = Field(default=0.1, ge=0.0, description="Control patch B reading for baseline drift / seal tamper")
+    patch_c_condition: PatchCondition = Field(default="NORMAL", description="Chemical interferent / humidity indicator condition")
+    
+    shelf_life_status: Literal["VALID", "EXPIRED", "WARNING"] = Field(default="VALID", description="Dosimeter substrate validity")
+
+class ContextualEnvironmentalTelemetry(BaseModel):
+    latitude: float = Field(default=12.9904, description="Plant latitude (MRPL Mangalore)")
     longitude: float = Field(default=74.8219, description="Plant longitude")
     temperature_c: float = Field(..., description="Ambient temperature in degrees Celsius")
     relative_humidity_pct: float = Field(..., description="Ambient relative humidity percentage (0-100)")
     pressure_hpa: Optional[float] = Field(default=1013.25, description="Atmospheric pressure in hPa")
-    k_factor: float = Field(default=1.0, description="Kinetic Arrhenius & moisture scaling factor k(T, RH)")
-    source: str = Field(default="Open-Meteo", description="Source of telemetry: Open-Meteo, DCS-Station-4, Sensor-Mesh")
+    source: str = Field(default="Open-Meteo Environmental Station", description="Contextual telemetry source")
+    framing_notice: str = Field(
+        default="Contextual environmental telemetry for ambient shift normalization",
+        description="Explicit notice framing telemetry contextually without unverified kinetic claims"
+    )
+
+# Backwards compatibility alias
+EnvironmentalTelemetry = ContextualEnvironmentalTelemetry
 
 class ComputedMetrics(BaseModel):
-    compensated_dose_ppm_hr: float = Field(..., description="Kinetic-compensated dose in ppm·hr (raw_dose / k_factor)")
-    shift_twa_ppm: float = Field(..., description="Time-Weighted Average exposure in ppm over shift duration")
+    # Differential Shift Calculation
+    net_delta_e: float = Field(..., description="Differential shift optical change: max(0, end_delta_e - start_delta_e - patch_b_drift)")
+    
+    # Dose Uncertainty Ranges (No fake precision)
+    shift_dose_low_ppm_hr: float = Field(..., description="Lower bound of estimated shift dose in ppm·hr")
+    shift_dose_high_ppm_hr: float = Field(..., description="Upper bound of estimated shift dose in ppm·hr")
+    shift_dose_range_str: str = Field(..., description="Formatted uncertainty range, e.g., '12.1–14.8 ppm·h'")
+    
+    shift_twa_low_ppm: float = Field(..., description="Lower bound of shift TWA in ppm")
+    shift_twa_high_ppm: float = Field(..., description="Upper bound of shift TWA in ppm")
+    shift_twa_range_str: str = Field(..., description="Formatted TWA range, e.g., '1.5–1.9 ppm'")
+    
     shift_hours: float = Field(..., description="Duration of exposure shift in hours")
-    prior_7day_load: float = Field(default=0.0, description="7-day cumulative load prior to current shift in ppm·hr")
-    updated_7day_load: float = Field(..., description="Updated 7-day cumulative load including current shift in ppm·hr")
+    
+    # Cumulative Rolling Loads
+    prior_7day_load_ppm_hr: float = Field(default=0.0, description="7-day cumulative load prior to current shift")
+    updated_7day_load_low: float = Field(..., description="Lower bound of updated 7-day cumulative load")
+    updated_7day_load_high: float = Field(..., description="Upper bound of updated 7-day cumulative load")
+    updated_7day_range_str: str = Field(..., description="Formatted 7-day range, e.g., '24.5–28.2 ppm·h'")
+    
     statutory_tier: Literal["TIER 1 (NORMAL)", "TIER 2 (CAUTION)", "TIER 3 (CRITICAL)"] = Field(
         ..., description="Statutory compliance and risk classification"
     )
-    is_single_shift_critical: bool = Field(default=False, description="Whether single-shift dose exceeded 20.0 ppm·hr")
+    measurement_confidence: MeasurementConfidence = Field(default="HIGH", description="Confidence metric based on Patch B/C integrity")
+    badge_integrity_warning: Optional[str] = Field(default=None, description="Warning if Patch B drift or Patch C compromised")
+    is_single_shift_critical: bool = Field(default=False, description="Whether single-shift dose exceeded 20.0 ppm·hr upper bound")
 
 class ShiftScanPayload(BaseModel):
     scan_id: str = Field(..., description="Unique scan transaction ID, e.g., SCN-89412")
@@ -38,5 +72,5 @@ class ShiftScanPayload(BaseModel):
     timestamp: datetime = Field(default_factory=utc_now)
     shift_duration_hours: float = Field(..., ge=0.1, le=24.0, description="Shift length in hours")
     badge_data: BadgeData
-    environmental_telemetry: Optional[EnvironmentalTelemetry] = None
+    environmental_telemetry: Optional[ContextualEnvironmentalTelemetry] = None
     computed_metrics: Optional[ComputedMetrics] = None

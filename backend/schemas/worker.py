@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
@@ -12,6 +12,7 @@ class HealthProfile(BaseModel):
     baseline_fev1_fvc_ratio: Optional[float] = Field(default=0.80, description="Baseline spirometry FEV1/FVC ratio (0.7-0.85 typical)")
     allergies: List[str] = Field(default_factory=list, description="Allergic rhinitis, skin sensitivities, etc.")
     ocular_sensitivity: bool = Field(default=False, description="History of eye irritation, dry eyes, contact lenses")
+    historical_symptoms: List[str] = Field(default_factory=list, description="Logged historical symptoms: conjunctival stinging, metallic taste, headache")
 
 class PPEDetails(BaseModel):
     respirator_type: str = Field(default="Half-Mask Air-Purifying", description="Half-Mask, Full-Face, SCBA, Escape Pack")
@@ -19,11 +20,23 @@ class PPEDetails(BaseModel):
     last_fit_test_date: Optional[str] = Field(default=None, description="ISO format date YYYY-MM-DD")
     fit_test_passed: bool = Field(default=True, description="Whether the last quantitative/qualitative fit test passed")
 
+class PhysicalBandRecord(BaseModel):
+    band_id: str
+    assigned_date: str
+    lifecycle_days_used: int = 1
+    total_shifts_on_band: int = 1
+    cumulative_optical_dose: float = 0.0
+    status: str = "ACTIVE" # ACTIVE, RETIRED, COMPROMISED
+
 class ExposureLedger(BaseModel):
-    rolling_7day_ppm_hr: float = Field(default=0.0, description="Rolling 7-day cumulative H2S load in ppm·hr")
+    rolling_7day_low_ppm_hr: float = Field(default=0.0, description="Lower bound of 7-day cumulative load")
+    rolling_7day_high_ppm_hr: float = Field(default=0.0, description="Upper bound of 7-day cumulative load")
+    rolling_7day_range_str: str = Field(default="0.0–0.0 ppm·h", description="Formatted 7-day range")
+    
     rolling_30day_ppm_hr: float = Field(default=0.0, description="Rolling 30-day cumulative H2S load in ppm·hr")
     rolling_90day_ppm_hr: float = Field(default=0.0, description="Rolling 90-day cumulative H2S load in ppm·hr")
     lifetime_shifts_logged: int = Field(default=0, description="Total number of logged shifts")
+    active_bands_history: List[PhysicalBandRecord] = Field(default_factory=list, description="Longitudinal history across physical bands")
     last_updated: datetime = Field(default_factory=utc_now)
 
 class WorkerProfile(BaseModel):

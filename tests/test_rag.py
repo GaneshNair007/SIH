@@ -17,11 +17,14 @@ def test_static_protocol_fallback():
     adv = get_static_protocol_advisory(
         tier="TIER 2 (CAUTION)",
         worker_id="EMP-1042",
-        twa_ppm=2.4,
-        rolling_7day_load=18.0
+        shift_dose_range="12.1–14.8 ppm·h",
+        shift_twa_range="1.5–1.9 ppm",
+        rolling_7day_range="18.2–22.4 ppm·h",
+        confidence="HIGH"
     )
     assert adv.severity_tier == "TIER 2 (CAUTION)"
     assert adv.rag_retrieval_mode == "STATIC_PROTOCOL_FALLBACK"
+    assert adv.shift_dose_range == "12.1–14.8 ppm·h"
     assert len(adv.recommendations) > 0
     assert adv.bilingual_content is not None
     assert len(adv.bilingual_content.summary_banner_hi) > 0

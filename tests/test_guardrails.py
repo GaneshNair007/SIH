@@ -4,7 +4,6 @@ from backend.guardrails.safety_lock import enforce_ascending_priority, apply_det
 from backend.guardrails.clinical_filter import check_clinical_scope_violations, sanitize_advisory_payload
 
 def test_ascending_priority_enforcement():
-    # Provide recommendations out of order
     items = [
         RecommendationItem(
             priority_level="[MANDATORY / CLINICAL]",
@@ -30,12 +29,12 @@ def test_ascending_priority_enforcement():
     assert sorted_items[2].priority_level == "[MANDATORY / CLINICAL]"
 
 def test_tier_3_hard_override_lock():
-    # Construct an advisory that omitted [MANDATORY / CLINICAL] in Tier 3
     advisory = DosimeterAdvisoryPayload(
         summary_banner="Critical level detected",
         worker_id="EMP-1042",
-        shift_twa_ppm=6.5,
-        rolling_7day_ppm_hr=38.0,
+        shift_dose_range="21.5–26.2 ppm·h",
+        shift_twa_range="2.7–3.3 ppm",
+        rolling_7day_range="36.0–42.0 ppm·h",
         severity_tier="TIER 3 (CRITICAL)",
         recommendations=[
             RecommendationItem(
@@ -50,13 +49,11 @@ def test_tier_3_hard_override_lock():
     
     locked_advisory = apply_deterministic_safety_locks(advisory, deterministic_tier="TIER 3 (CRITICAL)")
     
-    # Must have locked the mandatory OHC referral
     assert locked_advisory.mandatory_ohc_override_applied is True
     assert any(r.priority_level == "[MANDATORY / CLINICAL]" for r in locked_advisory.recommendations)
     assert any("Form-A" in a for a in locked_advisory.supervisor_actions)
 
 def test_clinical_scope_sanitizer():
-    # Text containing prescription or forbidden clinical dosage
     bad_text = "Take 500 mg salbutamol bronchodilator for diagnosed asthma."
     violations = check_clinical_scope_violations(bad_text)
     assert len(violations) > 0
@@ -65,8 +62,9 @@ def test_clinical_scope_sanitizer():
     advisory = DosimeterAdvisoryPayload(
         summary_banner="Prescribe 10 mg dexamethasone immediately.",
         worker_id="EMP-1042",
-        shift_twa_ppm=1.2,
-        rolling_7day_ppm_hr=5.0,
+        shift_dose_range="12.1–14.8 ppm·h",
+        shift_twa_range="1.5–1.9 ppm",
+        rolling_7day_range="18.0–22.0 ppm·h",
         severity_tier="TIER 2 (CAUTION)",
         recommendations=[
             RecommendationItem(

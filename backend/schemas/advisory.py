@@ -12,7 +12,7 @@ class RecommendationItem(BaseModel):
         ..., description="Must be one of '[LOW / SELF-CARE]', '[RECOMMENDED / OPERATIONAL]', '[MANDATORY / CLINICAL]'"
     )
     category: str = Field(
-        ..., description="Category: First-Aid, PPE, Operational, Medical-Triage, Statutory-Compliance"
+        ..., description="Category: First-Aid, PPE, Operational, Medical-Triage, Statutory-Compliance, Badge-Integrity"
     )
     action_item: str = Field(
         ..., description="Specific, concise instruction (e.g. 'Flush eyes with saline for 15 minutes', 'Replace particulate cartridge')"
@@ -28,17 +28,29 @@ class BilingualContent(BaseModel):
     summary_banner_hi: str = Field(..., description="Hindi translation of summary banner in Devanagari")
     triage_question_hi: str = Field(..., description="Hindi translation of symptom triage check")
     supervisor_actions_hi: List[str] = Field(default_factory=list, description="Hindi supervisor actions")
+    badge_integrity_notice_hi: Optional[str] = Field(default=None, description="Hindi translation of badge integrity check")
 
 class DosimeterAdvisoryPayload(BaseModel):
     summary_banner: str = Field(
-        ..., description="Empathetic, clear, plain-language status banner for the worker"
+        ..., description="Empathetic, clear, plain-language status banner displaying uncertainty ranges (no fake precision)"
     )
     worker_id: str = Field(..., description="Target employee ID")
-    shift_twa_ppm: float = Field(..., description="Computed shift Time-Weighted Average exposure in ppm")
-    rolling_7day_ppm_hr: float = Field(..., description="Updated 7-day cumulative load in ppm·hr")
+    
+    # Dose Uncertainty Ranges (No single-number fake precision)
+    shift_dose_range: str = Field(..., description="Estimated shift dose range, e.g., '12.1–14.8 ppm·h'")
+    shift_twa_range: str = Field(..., description="Estimated shift TWA range, e.g., '1.5–1.9 ppm'")
+    rolling_7day_range: str = Field(..., description="Estimated 7-day cumulative load range, e.g., '24.5–28.2 ppm·h'")
+    
     severity_tier: Literal["TIER 1 (NORMAL)", "TIER 2 (CAUTION)", "TIER 3 (CRITICAL)"] = Field(
         ..., description="Statutory risk tier determined deterministically"
     )
+    measurement_confidence: Literal["HIGH", "MEDIUM", "LOW", "INVALID"] = Field(
+        default="HIGH", description="Confidence level derived from Patch B drift and Patch C state"
+    )
+    badge_integrity_notice: Optional[str] = Field(
+        default=None, description="Notice if Patch B drift or Patch C chemical integrity warning is flagged"
+    )
+    
     recommendations: List[RecommendationItem] = Field(
         ..., description="Strictly ascending list of recommendations: [LOW / SELF-CARE] -> [RECOMMENDED / OPERATIONAL] -> [MANDATORY / CLINICAL]"
     )

@@ -1,10 +1,10 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from backend.schemas.advisory import DosimeterAdvisoryPayload, RecommendationItem, BilingualContent
 
 STATIC_PROTOCOL_TABLE: Dict[str, Dict[str, Any]] = {
     "TIER 1 (NORMAL)": {
-        "summary_banner": "Shift exposure within normal safe statutory limits (< 1.0 ppm TWA). Good adherence to safety standards.",
-        "summary_banner_hi": "पाली जोखिम सामान्य वैधानिक सीमा (< 1.0 ppm TWA) के भीतर है। सुरक्षा मानकों का पालन जारी रखें।",
+        "summary_banner": "Shift exposure within normal statutory limits (< 1.0 ppm TWA range). Safe occupational baseline maintained.",
+        "summary_banner_hi": "पाली जोखिम सामान्य वैधानिक सीमा (< 1.0 ppm TWA रेंज) के भीतर है। सुरक्षा मानकों का पालन जारी रखें।",
         "triage_question": "Are you currently feeling any slight eye dryness, headache, or throat tickle?",
         "triage_question_hi": "क्या आप आंखों में सूखापन, सिरदर्द या गले में हल्की खराश महसूस कर रहे हैं?",
         "recommendations": [
@@ -24,17 +24,19 @@ STATIC_PROTOCOL_TABLE: Dict[str, Dict[str, Any]] = {
             }
         ],
         "supervisor_actions": [
-            "Log shift reading into unit dosimeter ledger.",
+            "Log differential shift reading into unit dosimeter ledger.",
+            "Verify band lifecycle status (enforce 5-day maximum active patch rotation).",
             "Maintain standard operating ventilation and routine leak sniffing rounds."
         ],
         "supervisor_actions_hi": [
             "यूनिट डोसीमीटर लेजर में शिफ्ट रीडिंग दर्ज करें।",
+            "बैज लाइफसाइकिल सत्यापित करें (अधिकतम 5-दिवसीय उपयोग नियम)।",
             "मानक वेंटिलेशन और नियमित रिसाव जांच जारी रखें।"
         ]
     },
     "TIER 2 (CAUTION)": {
-        "summary_banner": "CAUTION: Shift TWA or 7-day cumulative exposure is moderately elevated (1.0–5.0 ppm TWA). Preventive action required.",
-        "summary_banner_hi": "सावधानी: शिफ्ट TWA या 7-दिवसीय जोखिम मध्यम स्तर (1.0–5.0 ppm TWA) पर है। निवारक कार्रवाई आवश्यक है।",
+        "summary_banner": "CAUTION: Estimated shift TWA or 7-day cumulative exposure is moderately elevated (1.0–5.0 ppm TWA range). Preventive action required.",
+        "summary_banner_hi": "सावधानी: अनुमानित शिफ्ट TWA या 7-दिवसीय जोखिम मध्यम स्तर (1.0–5.0 ppm TWA) पर है। निवारक कार्रवाई आवश्यक है।",
         "triage_question": "Do you notice eye stinging, cough, or a reduced ability to smell odors (olfactory fatigue)?",
         "triage_question_hi": "क्या आपको आंखों में जलन, खांसी, या गंध सूंघने की क्षमता में कमी महसूस हो रही है?",
         "recommendations": [
@@ -65,8 +67,8 @@ STATIC_PROTOCOL_TABLE: Dict[str, Dict[str, Any]] = {
         ]
     },
     "TIER 3 (CRITICAL)": {
-        "summary_banner": "CRITICAL EXPOSURE ALERT: Shift TWA >= 5.0 ppm or acute threshold exceeded. MANDATORY OHC medical evaluation required.",
-        "summary_banner_hi": "गंभीर जोखिम चेतावनी: शिफ्ट TWA >= 5.0 ppm या गंभीर सीमा पार हुई। OHC में तत्काल चिकित्सकीय जांच अनिवार्य है।",
+        "summary_banner": "CRITICAL EXPOSURE ALERT: Shift TWA range touches or exceeds 5.0 ppm or acute threshold breached. MANDATORY OHC medical evaluation required.",
+        "summary_banner_hi": "गंभीर जोखिम चेतावनी: शिफ्ट TWA सीमा 5.0 ppm या उससे अधिक है। OHC में तत्काल चिकित्सकीय जांच अनिवार्य है।",
         "triage_question": "Are you experiencing chest tightness, dizziness, shortness of breath, or sudden loss of smell?",
         "triage_question_hi": "क्या आपको सीने में जकड़न, चक्कर आना, सांस लेने में तकलीफ या गंध का अचानक बंद होना महसूस हो रहा है?",
         "recommendations": [
@@ -110,16 +112,30 @@ STATIC_PROTOCOL_TABLE: Dict[str, Dict[str, Any]] = {
 def get_static_protocol_advisory(
     tier: str,
     worker_id: str,
-    twa_ppm: float,
-    rolling_7day_load: float
+    shift_dose_range: str,
+    shift_twa_range: str,
+    rolling_7day_range: str,
+    confidence: str = "HIGH",
+    badge_integrity_notice: Optional[str] = None
 ) -> DosimeterAdvisoryPayload:
     """
     Returns an authoritative, deterministic DosimeterAdvisoryPayload strictly adhering
-    to statutory guidelines without any LLM hallucination risk.
+    to statutory guidelines with dose uncertainty ranges and badge integrity evaluation.
     """
     protocol = STATIC_PROTOCOL_TABLE.get(tier, STATIC_PROTOCOL_TABLE["TIER 1 (NORMAL)"])
     
     recs: List[RecommendationItem] = []
+    
+    # If badge integrity warning exists, inject badge maintenance item
+    if badge_integrity_notice:
+        recs.append(RecommendationItem(
+            priority_level="[RECOMMENDED / OPERATIONAL]",
+            category="Badge-Integrity",
+            action_item=f"Inspect wristband: {badge_integrity_notice}. Replace physical wristband before next shift.",
+            action_item_hi="कलाई का बैज बदलें: पैच सील या आधारभूत बहाव में असामान्यता पाई गई है।",
+            regulatory_reference="Dosimeter Patch Integrity Standard"
+        ))
+
     for item in protocol["recommendations"]:
         recs.append(RecommendationItem(
             priority_level=item["priority_level"],
@@ -132,15 +148,19 @@ def get_static_protocol_advisory(
     bilingual = BilingualContent(
         summary_banner_hi=protocol["summary_banner_hi"],
         triage_question_hi=protocol["triage_question_hi"],
-        supervisor_actions_hi=protocol.get("supervisor_actions_hi", [])
+        supervisor_actions_hi=protocol.get("supervisor_actions_hi", []),
+        badge_integrity_notice_hi=badge_integrity_notice
     )
     
     return DosimeterAdvisoryPayload(
         summary_banner=protocol["summary_banner"],
         worker_id=worker_id,
-        shift_twa_ppm=twa_ppm,
-        rolling_7day_ppm_hr=rolling_7day_load,
+        shift_dose_range=shift_dose_range,
+        shift_twa_range=shift_twa_range,
+        rolling_7day_range=rolling_7day_range,
         severity_tier=tier, # type: ignore
+        measurement_confidence=confidence, # type: ignore
+        badge_integrity_notice=badge_integrity_notice,
         recommendations=recs,
         triage_question=protocol["triage_question"],
         supervisor_actions=protocol["supervisor_actions"],

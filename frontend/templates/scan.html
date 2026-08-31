@@ -1,16 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Rakshak (रक्षक) — Dosimeter Badge Scan & Advisory{% endblock %}
+{% block title %}Rakshak (रक्षक) — Differential Shift Scan & Advisory Drawer{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
+<div class="space-y-6">
     <!-- Header -->
-    <div class="border-b border-slate-800 pb-4">
-        <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-qrcode text-emerald-400"></i>
-            <span data-i18n="scan_title">Passive Dosimeter Badge Scan & Analysis</span>
-        </h1>
-        <p class="text-xs text-slate-400" data-i18n="scan_subtitle">Zero-LLM Kinetic Dosimetry Math + Statutory Classification + AI Advisory</p>
+    <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-qrcode text-emerald-400"></i>
+                <span>Differential Shift Scan & Triage Drawer</span>
+            </h1>
+            <p class="text-xs text-slate-400">Differential optical evaluation (ΔE_end − ΔE_start), Patch B & C integrity, and uncertainty ranges</p>
+        </div>
+        <a href="/manager" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+            <i class="fa-solid fa-user-tie text-amber-400"></i>
+            <span>Supervisor Portal</span>
+        </a>
     </div>
 
     <!-- Scan Form & Simulator Grid -->
@@ -21,217 +27,206 @@
                 <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                     <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                         <i class="fa-solid fa-sliders text-cyan-400"></i>
-                        <span>Scan Parameters</span>
+                        <span>Shift Scan Parameters</span>
                     </h2>
-                    <span class="text-[11px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">MRPL DCS LINKED</span>
+                    <span class="text-[11px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">5-DAY BAND LIFECYCLE</span>
                 </div>
 
                 <form id="scanForm" onsubmit="handleScanSubmit(event)" class="space-y-4 text-xs">
                     <!-- Worker ID -->
                     <div>
                         <label class="block text-slate-300 font-semibold mb-1">Worker ID / कर्मचारी आईडी</label>
-                        <div class="flex gap-2">
-                            <input type="text" id="scanWorkerId" value="EMP-1042" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-500" required>
-                            <button type="button" onclick="loadWorkerList()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700">
-                                <i class="fa-solid fa-users text-xs"></i>
-                            </button>
+                        <input type="text" id="scanWorkerId" value="EMP-1042" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-500" required>
+                    </div>
+
+                    <!-- Plant Unit & Lifecycle Day -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-300 font-semibold mb-1">Refinery Unit</label>
+                            <select id="scanUnit" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500">
+                                <option value="CDU-1">CDU-1 (Crude Distillation 1)</option>
+                                <option value="CDU-2">CDU-2 (Crude Distillation 2)</option>
+                                <option value="DHDS">DHDS (Diesel Hydrodesulf.)</option>
+                                <option value="SRU">SRU (Sulfur Recovery Unit)</option>
+                                <option value="Tank Farm">Sour Crude Tank Farm</option>
+                                <option value="Flare Header">Flare Header</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-300 font-semibold mb-1">Band Day (1-5)</label>
+                            <select id="scanBandDay" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500">
+                                <option value="1">Day 1 (Fresh Wristband)</option>
+                                <option value="2">Day 2 (Active Band)</option>
+                                <option value="3">Day 3 (Active Band)</option>
+                                <option value="4">Day 4 (Approaching Rotation)</option>
+                                <option value="5">Day 5 (Final Shift Lifecycle)</option>
+                            </select>
                         </div>
                     </div>
 
-                    <!-- Plant Unit -->
-                    <div>
-                        <label class="block text-slate-300 font-semibold mb-1">Refinery Unit / प्लांट इकाई</label>
-                        <select id="scanUnit" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500">
-                            <option value="CDU-1">CDU-1 (Crude Distillation Unit 1)</option>
-                            <option value="CDU-2">CDU-2 (Crude Distillation Unit 2)</option>
-                            <option value="DHDS">DHDS (Diesel Hydrodesulfurization)</option>
-                            <option value="SRU">SRU (Sulfur Recovery Unit - Claus)</option>
-                            <option value="Tank Farm">Sour Crude Tank Farm</option>
-                            <option value="Flare Header">Elevated Flare Header</option>
-                        </select>
-                    </div>
-
-                    <!-- Shift Hours -->
-                    <div>
-                        <label class="block text-slate-300 font-semibold mb-1">Shift Duration / पाली अवधि (Hours)</label>
-                        <input type="number" id="scanHours" value="8.0" min="0.5" max="24.0" step="0.5" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500" required>
-                    </div>
-
-                    <!-- Optical Density Delta E Slider -->
-                    <div>
-                        <div class="flex justify-between items-center mb-1">
-                            <label class="text-slate-300 font-semibold">Optical Density (ΔE) / वर्णमापीय अंतर</label>
-                            <span id="deltaEValueDisplay" class="font-mono text-cyan-400 font-bold text-sm">4.2</span>
+                    <!-- Differential Readings: Start vs End Delta E -->
+                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                        <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
+                            <span>Differential Optical Density (ΔE)</span>
+                            <span class="text-[10px] text-cyan-400 font-mono">Irreversible Chemical Strip</span>
                         </div>
-                        <input type="range" id="scanDeltaE" min="0.2" max="25.0" step="0.1" value="4.2" oninput="updateDeltaEDisplay(this.value)" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
-                        
-                        <!-- Visual Band Color Preview -->
-                        <div class="mt-2 p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                            <span class="text-[11px] text-slate-400">Wristband Substrate Preview:</span>
-                            <div id="bandColorPreview" class="w-20 h-6 rounded-md border border-slate-600 transition-colors shadow-inner" style="background-color: rgb(210, 195, 150);"></div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1">Start of Shift (ΔE_start):</label>
+                                <input type="number" id="scanStartDeltaE" value="0.5" min="0.0" max="30.0" step="0.1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" required>
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1">End of Shift (ΔE_end):</label>
+                                <input type="number" id="scanEndDeltaE" value="4.2" min="0.0" max="30.0" step="0.1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Patch B & C Integrity Checks -->
+                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                        <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
+                            <span>Control Patches & Seal Integrity</span>
+                            <span class="text-[10px] text-amber-400 font-mono">Tamper / Drift Ingestion</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1">Patch B Drift (Reference):</label>
+                                <input type="number" id="scanPatchB" value="0.10" min="0.0" max="2.0" step="0.05" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[11px] mb-1">Patch C Condition:</label>
+                                <select id="scanPatchC" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
+                                    <option value="NORMAL">NORMAL (Intact Seal)</option>
+                                    <option value="WARNING">WARNING (Minor Degradation)</option>
+                                    <option value="COMPROMISED">COMPROMISED (Breached)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
                     <!-- Quick Preset Scenarios -->
                     <div class="pt-1">
-                        <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Test Presets / त्वरित परिदृश्य:</label>
+                        <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Test Scenarios / त्वरित परिदृश्य:</label>
                         <div class="grid grid-cols-3 gap-2">
-                            <button type="button" onclick="setPreset(1.2, 8.0, 'CDU-1')" class="p-2 rounded-lg bg-emerald-950/60 border border-emerald-800/80 hover:bg-emerald-900 text-emerald-300 text-center transition">
-                                <div class="font-bold text-[11px]">Tier 1 (Safe)</div>
-                                <div class="text-[10px] text-slate-400">ΔE = 1.2</div>
+                            <button type="button" onclick="setScenario(0.2, 1.4, 0.05, 'NORMAL', 'CDU-1')" class="p-2 rounded-lg bg-emerald-950/60 border border-emerald-800/80 hover:bg-emerald-900 text-emerald-300 text-center transition">
+                                <div class="font-bold text-[11px]">Normal (Tier 1)</div>
+                                <div class="text-[10px] text-slate-400">ΔE 0.2 &rarr; 1.4</div>
                             </button>
-                            <button type="button" onclick="setPreset(6.5, 8.0, 'DHDS')" class="p-2 rounded-lg bg-amber-950/60 border border-amber-800/80 hover:bg-amber-900 text-amber-300 text-center transition">
-                                <div class="font-bold text-[11px]">Tier 2 (Caution)</div>
-                                <div class="text-[10px] text-slate-400">ΔE = 6.5</div>
+                            <button type="button" onclick="setScenario(1.0, 5.8, 0.15, 'NORMAL', 'DHDS')" class="p-2 rounded-lg bg-amber-950/60 border border-amber-800/80 hover:bg-amber-900 text-amber-300 text-center transition">
+                                <div class="font-bold text-[11px]">Caution (Tier 2)</div>
+                                <div class="text-[10px] text-slate-400">ΔE 1.0 &rarr; 5.8</div>
                             </button>
-                            <button type="button" onclick="setPreset(18.5, 8.0, 'SRU')" class="p-2 rounded-lg bg-rose-950/60 border border-rose-800/80 hover:bg-rose-900 text-rose-300 text-center transition">
-                                <div class="font-bold text-[11px]">Tier 3 (Critical)</div>
-                                <div class="text-[10px] text-slate-400">ΔE = 18.5</div>
+                            <button type="button" onclick="setScenario(1.2, 16.5, 0.20, 'NORMAL', 'SRU')" class="p-2 rounded-lg bg-rose-950/60 border border-rose-800/80 hover:bg-rose-900 text-rose-300 text-center transition">
+                                <div class="font-bold text-[11px]">Critical (Tier 3)</div>
+                                <div class="text-[10px] text-slate-400">ΔE 1.2 &rarr; 16.5</div>
                             </button>
                         </div>
                     </div>
 
-                    <!-- Environmental Telemetry Live Box -->
-                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5 text-[11px]">
-                        <div class="flex justify-between text-slate-400">
-                            <span>Ambient Temp (T):</span>
-                            <span id="telemetryTemp" class="text-white font-mono">30.0°C</span>
-                        </div>
-                        <div class="flex justify-between text-slate-400">
-                            <span>Relative Humidity (RH):</span>
-                            <span id="telemetryRH" class="text-white font-mono">75.0%</span>
-                        </div>
-                        <div class="flex justify-between text-slate-400">
-                            <span>Kinetic Scaling k(T, RH):</span>
-                            <span id="telemetryK" class="text-cyan-400 font-mono font-bold">1.24</span>
-                        </div>
-                    </div>
-
-                    <button type="submit" id="submitScanBtn" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2">
+                    <button type="submit" id="submitScanBtn" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2">
                         <i class="fa-solid fa-calculator"></i>
-                        <span>Process Scan & Generate Advisory</span>
+                        <span>Process Differential Scan & Open Triage Drawer</span>
                     </button>
                 </form>
             </div>
         </div>
 
-        <!-- Output & Advisory Display (7 cols) -->
+        <!-- Post-Scan Interactive Triage Drawer (7 cols) -->
         <div class="lg:col-span-7 space-y-6">
-            <!-- Placeholder before scan -->
             <div id="scanPlaceholder" class="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-12 text-center text-slate-500 flex flex-col items-center justify-center h-full min-h-[400px]">
                 <i class="fa-solid fa-microchip text-4xl mb-4 text-slate-700"></i>
-                <h3 class="text-base font-semibold text-slate-400">No Badge Scan Processed Yet</h3>
-                <p class="text-xs max-w-sm mt-1">Adjust parameters or pick a preset on the left, then click "Process Scan".</p>
+                <h3 class="text-base font-semibold text-slate-400">Interactive Advisory & Triage Drawer</h3>
+                <p class="text-xs max-w-sm mt-1">Submit a shift scan to inspect the differential exposure range, badge integrity, and ascending-priority actions.</p>
             </div>
 
-            <!-- Scan Result Container (Hidden initially) -->
-            <div id="scanResultContainer" class="hidden space-y-6">
-                <!-- Deterministic Dosimetry Summary Bar -->
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                        <span class="text-xs font-mono text-slate-400" id="resultScanId">SCN-XXXXXXXX</span>
+            <!-- Drawer Container -->
+            <div id="scanResultContainer" class="hidden space-y-5 animate-fadeIn">
+                <!-- Uncertainty Range Metric Cards -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                            <span class="text-xs font-mono text-cyan-400 font-bold" id="resultScanId">SCN-XXXXXXXX</span>
+                            <div class="text-[11px] text-slate-400" id="resultConfidenceDisplay">Confidence: HIGH</div>
+                        </div>
                         <div id="resultStatutoryTierBadge" class="px-3 py-1 rounded-full text-xs font-bold font-mono uppercase">
                             TIER 1 (NORMAL)
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                    <!-- 3 Uncertainty Range Columns -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                         <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <div class="text-[10px] text-slate-400 font-semibold uppercase">Compensated Dose</div>
-                            <div id="resultCompDose" class="text-lg font-bold text-white font-mono">-- ppm·hr</div>
+                            <div class="text-[10px] text-slate-400 font-semibold uppercase">Estimated Shift Dose Range</div>
+                            <div id="resultDoseRange" class="text-base font-bold text-white font-mono mt-1">-- ppm·h</div>
                         </div>
                         <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <div class="text-[10px] text-slate-400 font-semibold uppercase">Shift TWA</div>
-                            <div id="resultTWA" class="text-lg font-bold text-cyan-400 font-mono">-- ppm</div>
+                            <div class="text-[10px] text-slate-400 font-semibold uppercase">Estimated Shift TWA Range</div>
+                            <div id="resultTWARange" class="text-base font-bold text-cyan-400 font-mono mt-1">-- ppm</div>
                         </div>
                         <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <div class="text-[10px] text-slate-400 font-semibold uppercase">7-Day Load</div>
-                            <div id="result7DayLoad" class="text-lg font-bold text-amber-400 font-mono">-- ppm·hr</div>
+                            <div class="text-[10px] text-slate-400 font-semibold uppercase">7-Day Cumulative Load</div>
+                            <div id="result7DayRange" class="text-base font-bold text-amber-400 font-mono mt-1">-- ppm·h</div>
                         </div>
-                        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <div class="text-[10px] text-slate-400 font-semibold uppercase">RAG Engine</div>
-                            <div id="resultRagMode" class="text-xs font-bold text-emerald-400 font-mono mt-1">HYBRID_RAG</div>
-                        </div>
+                    </div>
+
+                    <!-- Contextual Environmental Telemetry Pill -->
+                    <div class="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-cloud-sun text-cyan-400"></i> Contextual Telemetry: <span id="telemetryContext" class="text-slate-200">23.5°C, 95% RH</span></span>
+                        <span class="font-mono text-emerald-400 text-[10px]">Ambient Shift Normalization</span>
+                    </div>
+
+                    <!-- Badge Integrity Warning Notice (if any) -->
+                    <div id="badgeIntegrityAlert" class="p-3 rounded-xl bg-amber-950/60 border border-amber-800/80 text-amber-300 text-xs hidden">
+                        <i class="fa-solid fa-triangle-exclamation mr-1.5"></i> <span id="badgeIntegrityText"></span>
                     </div>
                 </div>
 
-                <!-- Hard Safety Override Alert (Tier 3 only) -->
+                <!-- Hard Tier 3 Override Lock Banner -->
                 <div id="hardOverrideBanner" class="p-4 rounded-2xl bg-rose-950/80 border-2 border-rose-600 text-rose-200 text-xs hidden shadow-lg animate-pulse">
                     <div class="flex items-start gap-3">
                         <i class="fa-solid fa-triangle-exclamation text-rose-400 text-xl mt-0.5"></i>
                         <div>
                             <div class="font-bold text-sm text-white">HARD DETERMINISTIC SAFETY OVERRIDE ACTIVE</div>
                             <p class="mt-1 leading-relaxed">
-                                Statutory Tier 3 (Critical Exposure) reached. Shift supervisor has been notified, mandatory Occupational Health Centre (OHC) clinical referral is locked, and 48-hour sour gas stand-down is applied.
+                                Statutory Tier 3 (Critical Exposure) upper range exceeded. Mandatory Occupational Health Centre (OHC) clinical referral locked and 48-hour sour gas stand-down applied.
                             </p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Dual View Container (Worker View & Supervisor View) -->
-                <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                    <!-- Tab Switcher -->
-                    <div class="flex border-b border-slate-800 bg-slate-950/60 p-1.5 gap-2">
-                        <button id="tabWorkerBtn" onclick="switchAdvisoryTab('worker')" class="flex-1 py-2 rounded-xl text-xs font-bold bg-cyan-600 text-white shadow transition flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-user"></i>
-                            <span>Worker View / कर्मी दृश्य</span>
-                        </button>
-                        <button id="tabSupervisorBtn" onclick="switchAdvisoryTab('supervisor')" class="flex-1 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-user-tie"></i>
-                            <span>Supervisor View / पर्यवेक्षक दृश्य</span>
-                        </button>
+                <!-- Dual View Advisory & Action Matrix -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5 shadow-xl">
+                    <!-- Plain Language Summary Banner -->
+                    <div class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                        <div id="advisoryBannerEn" class="text-white font-medium leading-relaxed text-sm"></div>
+                        <div id="advisoryBannerHi" class="text-cyan-300 font-medium leading-relaxed text-xs"></div>
                     </div>
 
-                    <!-- Worker View Content -->
-                    <div id="workerViewPanel" class="p-6 space-y-5 text-sm">
-                        <!-- Summary Banner -->
-                        <div class="p-4 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1">
-                            <div id="advisoryBannerEn" class="text-white font-medium leading-relaxed"></div>
-                            <div id="advisoryBannerHi" class="text-cyan-300 font-medium leading-relaxed text-xs"></div>
-                        </div>
-
-                        <!-- Symptom Triage Check -->
-                        <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-3">
-                            <i class="fa-solid fa-circle-question text-purple-400 text-base mt-0.5"></i>
-                            <div>
-                                <div class="text-xs font-bold text-purple-300 uppercase tracking-wider">Symptom Check</div>
-                                <div id="advisoryTriageEn" class="text-slate-200 text-xs mt-0.5"></div>
-                                <div id="advisoryTriageHi" class="text-slate-400 text-xs mt-0.5"></div>
-                            </div>
-                        </div>
-
-                        <!-- Recommendations List (Ascending Priority) -->
+                    <!-- Targeted Symptom Check -->
+                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-start gap-3 text-xs">
+                        <i class="fa-solid fa-circle-question text-purple-400 text-base mt-0.5"></i>
                         <div>
-                            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Prioritized Recommendations (Ascending Order)</h4>
-                            <div id="recommendationsList" class="space-y-3">
-                                <!-- Recommendation cards injected by JS -->
-                            </div>
+                            <div class="font-bold text-purple-300 uppercase tracking-wider text-[10px]">Targeted Clinical Follow-up:</div>
+                            <div id="advisoryTriageEn" class="text-slate-200 mt-0.5"></div>
+                            <div id="advisoryTriageHi" class="text-slate-400 text-[11px] mt-0.5"></div>
                         </div>
                     </div>
 
-                    <!-- Supervisor View Content -->
-                    <div id="supervisorViewPanel" class="p-6 space-y-5 text-sm hidden">
-                        <div>
-                            <h4 class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <i class="fa-solid fa-wrench"></i>
-                                <span>Shift Supervisor Compliance Directives</span>
-                            </h4>
-                            <div id="supervisorActionsList" class="space-y-2.5">
-                                <!-- Actions injected by JS -->
-                            </div>
+                    <!-- Ascending Priority Recommendations List -->
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Itemized Action Matrix (Ascending Priority)</h4>
+                        <div id="recommendationsList" class="space-y-2.5">
+                            <!-- Injected by JS -->
                         </div>
+                    </div>
 
-                        <!-- 1-Click PDF Generation Card -->
-                        <div class="mt-6 p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                            <div>
-                                <div class="text-xs font-bold text-white">Statutory Incident Report (OISD Form-A)</div>
-                                <div class="text-[11px] text-slate-400">Pre-filled with telemetry, dosimetry math, and sign-offs</div>
-                            </div>
-                            <a id="downloadPdfBtn" href="#" target="_blank" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-2">
-                                <i class="fa-solid fa-file-pdf"></i>
-                                <span>Download PDF</span>
-                            </a>
-                        </div>
+                    <!-- 1-Click OISD Incident PDF Button -->
+                    <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+                        <span class="text-xs text-slate-400 font-medium">Compliance & Regulatory Incident Form:</span>
+                        <a id="downloadPdfBtn" href="#" target="_blank" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-2">
+                            <i class="fa-solid fa-file-pdf"></i>
+                            <span>Generate OISD Form-A PDF</span>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -242,37 +237,29 @@
 
 {% block scripts %}
 <script>
-let lastScanResult = null;
-
-function updateDeltaEDisplay(val) {
-    document.getElementById('deltaEValueDisplay').textContent = val;
-    
-    // Simulate wristband darkening color: yellow/cream (low) to dark brown/black (high)
-    const factor = Math.min(1.0, val / 20.0);
-    const r = Math.round(230 - factor * 170);
-    const g = Math.round(210 - factor * 170);
-    const b = Math.round(160 - factor * 140);
-    document.getElementById('bandColorPreview').style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-}
-
-function setPreset(deltaE, hours, unit) {
-    document.getElementById('scanDeltaE').value = deltaE;
-    document.getElementById('scanHours').value = hours;
+function setScenario(startE, endE, drift, cond, unit) {
+    document.getElementById('scanStartDeltaE').value = startE;
+    document.getElementById('scanEndDeltaE').value = endE;
+    document.getElementById('scanPatchB').value = drift;
+    document.getElementById('scanPatchC').value = cond;
     document.getElementById('scanUnit').value = unit;
-    updateDeltaEDisplay(deltaE);
 }
 
 async function handleScanSubmit(e) {
     e.preventDefault();
     const btn = document.getElementById('submitScanBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing Dosimetry...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing Differential Math...';
 
     const payload = {
         worker_id: document.getElementById('scanWorkerId').value.trim(),
         plant_unit: document.getElementById('scanUnit').value,
-        shift_duration_hours: parseFloat(document.getElementById('scanHours').value),
-        delta_e: parseFloat(document.getElementById('scanDeltaE').value)
+        band_lifecycle_day: parseInt(document.getElementById('scanBandDay').value),
+        start_delta_e: parseFloat(document.getElementById('scanStartDeltaE').value),
+        end_delta_e: parseFloat(document.getElementById('scanEndDeltaE').value),
+        patch_b_drift: parseFloat(document.getElementById('scanPatchB').value),
+        patch_c_condition: document.getElementById('scanPatchC').value,
+        shift_duration_hours: 8.0
     };
 
     try {
@@ -282,13 +269,12 @@ async function handleScanSubmit(e) {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        lastScanResult = data;
         renderScanResults(data);
     } catch (err) {
         alert('Error processing scan: ' + err.message);
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-calculator"></i> Process Scan & Generate Advisory';
+        btn.innerHTML = '<i class="fa-solid fa-calculator"></i> Process Differential Scan & Open Triage Drawer';
     }
 }
 
@@ -300,19 +286,23 @@ function renderScanResults(data) {
     const adv = data.advisory;
     const tel = data.telemetry;
 
-    // Summary numbers
     document.getElementById('resultScanId').textContent = data.scan_id;
-    document.getElementById('resultCompDose').textContent = m.compensated_dose_ppm_hr + ' ppm·hr';
-    document.getElementById('resultTWA').textContent = m.shift_twa_ppm + ' ppm';
-    document.getElementById('result7DayLoad').textContent = m.updated_7day_load + ' ppm·hr';
-    document.getElementById('resultRagMode').textContent = adv.rag_retrieval_mode;
+    document.getElementById('resultDoseRange').textContent = m.shift_dose_range_str;
+    document.getElementById('resultTWARange').textContent = m.shift_twa_range_str;
+    document.getElementById('result7DayRange').textContent = m.updated_7day_range_str;
+    document.getElementById('resultConfidenceDisplay').textContent = `Measurement Confidence: ${m.measurement_confidence}`;
+    document.getElementById('telemetryContext').textContent = `${tel.temperature_c}°C, ${tel.relative_humidity_pct}% RH (${tel.source})`;
 
-    // Telemetry updates
-    document.getElementById('telemetryTemp').textContent = tel.temperature_c + '°C';
-    document.getElementById('telemetryRH').textContent = tel.relative_humidity_pct + '%';
-    document.getElementById('telemetryK').textContent = tel.k_factor;
+    // Integrity warning
+    const integrityAlert = document.getElementById('badgeIntegrityAlert');
+    if (m.badge_integrity_warning) {
+        integrityAlert.classList.remove('hidden');
+        document.getElementById('badgeIntegrityText').textContent = m.badge_integrity_warning;
+    } else {
+        integrityAlert.classList.add('hidden');
+    }
 
-    // Tier styling
+    // Tier badge
     const tierBadge = document.getElementById('resultStatutoryTierBadge');
     tierBadge.textContent = m.statutory_tier;
     if (m.statutory_tier.includes('TIER 3')) {
@@ -326,13 +316,13 @@ function renderScanResults(data) {
         document.getElementById('hardOverrideBanner').classList.add('hidden');
     }
 
-    // Worker View text
+    // Advisory banners
     document.getElementById('advisoryBannerEn').textContent = adv.summary_banner;
     document.getElementById('advisoryBannerHi').textContent = adv.bilingual_content ? adv.bilingual_content.summary_banner_hi : '';
     document.getElementById('advisoryTriageEn').textContent = adv.triage_question;
     document.getElementById('advisoryTriageHi').textContent = adv.bilingual_content ? adv.bilingual_content.triage_question_hi : '';
 
-    // Render Recommendations List
+    // Recommendations list
     const recsList = document.getElementById('recommendationsList');
     recsList.innerHTML = '';
     adv.recommendations.forEach(r => {
@@ -348,66 +338,19 @@ function renderScanResults(data) {
             tagClass = 'text-amber-400 bg-amber-950 border-amber-800';
         }
 
-        itemDiv.className = `p-3.5 rounded-xl border ${borderClass} space-y-1.5`;
+        itemDiv.className = `p-3 rounded-xl border ${borderClass} space-y-1 text-xs`;
         itemDiv.innerHTML = `
             <div class="flex items-center justify-between">
-                <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${tagClass}">
-                    ${r.priority_level}
-                </span>
+                <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${tagClass}">${r.priority_level}</span>
                 <span class="text-[10px] text-slate-400 font-semibold">${r.category}</span>
             </div>
-            <div class="text-xs text-slate-100 font-medium">${r.action_item}</div>
+            <div class="text-slate-100 font-medium">${r.action_item}</div>
             ${r.action_item_hi ? `<div class="text-[11px] text-slate-400">${r.action_item_hi}</div>` : ''}
-            ${r.regulatory_reference ? `<div class="text-[10px] text-slate-500 font-mono italic">Ref: ${r.regulatory_reference}</div>` : ''}
         `;
         recsList.appendChild(itemDiv);
     });
 
-    // Supervisor View Actions
-    const supList = document.getElementById('supervisorActionsList');
-    supList.innerHTML = '';
-    adv.supervisor_actions.forEach((act, idx) => {
-        const row = document.createElement('div');
-        row.className = 'p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 flex items-start gap-2.5';
-        row.innerHTML = `
-            <span class="w-5 h-5 rounded-full bg-amber-950 border border-amber-800 text-amber-400 font-bold flex items-center justify-center flex-shrink-0 text-[10px]">
-                ${idx + 1}
-            </span>
-            <span class="leading-relaxed">${act}</span>
-        `;
-        supList.appendChild(row);
-    });
-
-    // Update PDF link
     document.getElementById('downloadPdfBtn').href = `/api/supervisor/incident-pdf/${data.scan_id}`;
 }
-
-function switchAdvisoryTab(tab) {
-    if (tab === 'worker') {
-        document.getElementById('workerViewPanel').classList.remove('hidden');
-        document.getElementById('supervisorViewPanel').classList.add('hidden');
-        document.getElementById('tabWorkerBtn').className = 'flex-1 py-2 rounded-xl text-xs font-bold bg-cyan-600 text-white shadow transition flex items-center justify-center gap-2';
-        document.getElementById('tabSupervisorBtn').className = 'flex-1 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center justify-center gap-2';
-    } else {
-        document.getElementById('workerViewPanel').classList.add('hidden');
-        document.getElementById('supervisorViewPanel').classList.remove('hidden');
-        document.getElementById('tabSupervisorBtn').className = 'flex-1 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white shadow transition flex items-center justify-center gap-2';
-        document.getElementById('tabWorkerBtn').className = 'flex-1 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition flex items-center justify-center gap-2';
-    }
-}
-
-async function loadWorkerList() {
-    try {
-        const res = await fetch('/api/workers');
-        const workers = await res.json();
-        if (workers.length > 0) {
-            document.getElementById('scanWorkerId').value = workers[0].worker_id;
-        }
-    } catch(e) {}
-}
-
-window.onload = () => {
-    updateDeltaEDisplay(4.2);
-};
 </script>
 {% endblock %}

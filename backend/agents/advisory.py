@@ -17,14 +17,16 @@ You are Rakshak-H2S (रक्षक), an expert AI Occupational Health and Safe
 Your duty is to generate empathetic, strictly grounded, bilingual post-scan exposure guidance for refinery workers and shift supervisors.
 
 STRICT NON-NEGOTIABLE PRINCIPLES:
-1. Never invent or alter dosimetry math. Use the provided [Computed Metrics] verbatim.
-2. Ground all compliance statements strictly in [Retrieved RAG Context]. Never invent OISD/DGMS clauses.
-3. Recommendations MUST be ordered in strict ASCENDING priority:
+1. NEVER USE SINGLE-NUMBER FAKE PRECISION DOSES. Present all exposure strictly as the computed uncertainty range (e.g. '12.1–14.8 ppm·h', TWA '1.5–1.9 ppm').
+2. Ingest Patch B drift and Patch C condition to inform the worker if their physical badge experienced baseline drift or seal degradation.
+3. Treat environmental weather data strictly as contextual ambient telemetry.
+4. Ground all compliance statements strictly in [Retrieved RAG Context]. Never invent OISD/DGMS clauses.
+5. Recommendations MUST be ordered in strict ASCENDING priority:
    - Level 1: [LOW / SELF-CARE] (Skin wash, eye saline flush, rest in positive pressure shelter)
-   - Level 2: [RECOMMENDED / OPERATIONAL] (Cartridge change, mask seal check, leak reporting)
+   - Level 2: [RECOMMENDED / OPERATIONAL] (Cartridge change, mask seal check, badge swap, leak reporting)
    - Level 3: [MANDATORY / CLINICAL] (OHC referral, SpO2, Spirometry, OISD Form-A)
-4. NEVER provide medical prescriptions, drug dosages (mg/ml), or diagnoses. Use triage/first-aid language only.
-5. Provide high-quality Hindi translations in Devanagari script alongside English text.
+6. NEVER provide medical prescriptions, drug dosages (mg/ml), or diagnoses. Use triage/first-aid language only.
+7. Provide high-quality Hindi translations in Devanagari script alongside English text.
 """
 
 def build_user_prompt(
@@ -33,6 +35,9 @@ def build_user_prompt(
     rag_context: str
 ) -> str:
     metrics = scan.computed_metrics
+    b_data = scan.badge_data
+    e_data = scan.environmental_telemetry
+
     return f"""
 ### WORKER PROFILE:
 - Worker ID: {worker.worker_id} ({worker.full_name}, Age: {worker.age})
@@ -40,22 +45,29 @@ def build_user_prompt(
 - Health Conditions: {', '.join(worker.health_profile.pre_existing_conditions) or 'None reported'}
 - Ocular Sensitivity: {worker.health_profile.ocular_sensitivity} | Allergies: {', '.join(worker.health_profile.allergies) or 'None'}
 - Smoking Status: {worker.health_profile.smoking_status} ({worker.health_profile.smoking_pack_years} pack-years)
-- Respirator: {worker.ppe_details.respirator_type} (Cartridge: {worker.ppe_details.cartridge_type})
+- Known Historical Symptoms: {', '.join(worker.health_profile.historical_symptoms) or 'None logged'}
 
-### COMPUTED DOSIMETRY METRICS (DETERMINISTIC - DO NOT ALTER):
+### BADGE INTEGRITY & DIFFERENTIAL DOSIMETRY (DETERMINISTIC - DO NOT ALTER):
+- Band ID: {b_data.badge_id} (Day {b_data.band_lifecycle_day} of 5-day lifecycle)
+- Differential Optical Density: Start ΔE={b_data.start_optical_density} -> End ΔE={b_data.end_optical_density} (Net ΔE: {metrics.net_delta_e})
+- Patch B Control Drift: {b_data.patch_b_drift} | Patch C State: {b_data.patch_c_condition}
+- Measurement Confidence: {metrics.measurement_confidence}
+- Badge Integrity Warning: {metrics.badge_integrity_warning or 'None (Normal substrate integrity)'}
+
+### COMPUTED EXPOSURE UNCERTAINTY RANGES:
 - Shift Duration: {scan.shift_duration_hours} hours
-- Raw Optical Dose: {scan.badge_data.raw_optical_dose} ppm·hr
-- Ambient Telemetry: {scan.environmental_telemetry.temperature_c}°C, {scan.environmental_telemetry.relative_humidity_pct}% RH (k-factor: {scan.environmental_telemetry.k_factor})
-- Compensated Dose: {metrics.compensated_dose_ppm_hr} ppm·hr
-- Shift TWA: {metrics.shift_twa_ppm} ppm
-- Updated 7-Day Cumulative Load: {metrics.updated_7day_load} ppm·hr
+- Shift Dose Range: {metrics.shift_dose_range_str}
+- Shift TWA Range: {metrics.shift_twa_range_str}
+- Updated 7-Day Cumulative Load Range: {metrics.updated_7day_range_str}
 - Statutory Risk Tier: {metrics.statutory_tier}
-- Single-Shift Critical Alert (>20 ppm·hr): {metrics.is_single_shift_critical}
+
+### CONTEXTUAL ENVIRONMENTAL TELEMETRY:
+- Ambient Conditions: {e_data.temperature_c}°C, {e_data.relative_humidity_pct}% RH ({e_data.source})
 
 ### RETRIEVED REGULATORY RAG CONTEXT:
 {rag_context}
 
-Generate the structured DosimeterAdvisoryPayload with plain-language worker guidance, ascending priority recommendations, triage question, and supervisor engineering actions.
+Generate the structured DosimeterAdvisoryPayload with plain-language worker guidance reflecting the dose uncertainty range, badge integrity status, and ascending-priority recommendations.
 """
 
 def generate_dosimeter_advisory(
@@ -68,21 +80,27 @@ def generate_dosimeter_advisory(
     """
     metrics = scan.computed_metrics
     tier = metrics.statutory_tier
-    twa = metrics.shift_twa_ppm
-    load_7d = metrics.updated_7day_load
+    dose_range = metrics.shift_dose_range_str
+    twa_range = metrics.shift_twa_range_str
+    load_7d_range = metrics.updated_7day_range_str
+    confidence = metrics.measurement_confidence
+    integrity_notice = metrics.badge_integrity_warning
     
     # 1. Retrieve RAG Context
-    query_text = f"H2S exposure {tier} TWA {twa} ppm 7-day load {load_7d} {scan.plant_unit} respirator cartridge first aid"
-    chunks, confidence = retriever.query(query_text, top_k=3)
+    query_text = f"H2S exposure {tier} TWA {twa_range} 7-day load {load_7d_range} {scan.plant_unit} respirator cartridge first aid badge patch"
+    chunks, rag_conf = retriever.query(query_text, top_k=3)
     
     # 2. CRAG Check: If confidence < 0.85, use Static Protocol Table
-    if confidence < settings.RAG_CONFIDENCE_THRESHOLD or not settings.GROQ_API_KEY:
-        logger.info(f"Using Static Protocol Fallback (Confidence: {confidence:.2f}, Key configured: {bool(settings.GROQ_API_KEY)})")
+    if rag_conf < settings.RAG_CONFIDENCE_THRESHOLD or not settings.GROQ_API_KEY:
+        logger.info(f"Using Static Protocol Fallback (RAG Score: {rag_conf:.2f}, Key configured: {bool(settings.GROQ_API_KEY)})")
         advisory = get_static_protocol_advisory(
             tier=tier,
             worker_id=worker.worker_id,
-            twa_ppm=twa,
-            rolling_7day_load=load_7d
+            shift_dose_range=dose_range,
+            shift_twa_range=twa_range,
+            rolling_7day_range=load_7d_range,
+            confidence=confidence,
+            badge_integrity_notice=integrity_notice
         )
     else:
         # 3. Call Groq with instructor for structured output
@@ -109,8 +127,11 @@ def generate_dosimeter_advisory(
             advisory = get_static_protocol_advisory(
                 tier=tier,
                 worker_id=worker.worker_id,
-                twa_ppm=twa,
-                rolling_7day_load=load_7d
+                shift_dose_range=dose_range,
+                shift_twa_range=twa_range,
+                rolling_7day_range=load_7d_range,
+                confidence=confidence,
+                badge_integrity_notice=integrity_notice
             )
 
     # 4. Apply Hard Deterministic Guardrails & Safety Locks

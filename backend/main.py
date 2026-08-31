@@ -17,11 +17,17 @@ from backend.config import settings
 from backend.database.db import get_db, init_db
 from backend.database.models import WorkerModel, ExposureLedgerModel, ShiftScanModel
 from backend.schemas.worker import WorkerProfile, HealthProfile, PPEDetails, ExposureLedger
-from backend.schemas.dosimetry import ShiftScanPayload, BadgeData, EnvironmentalTelemetry, ComputedMetrics
+from backend.schemas.dosimetry import (
+    ShiftScanPayload, BadgeData, ContextualEnvironmentalTelemetry,
+    EnvironmentalTelemetry, ComputedMetrics
+)
 from backend.schemas.advisory import DosimeterAdvisoryPayload
 from backend.engine.weather import get_kinetic_weather
-from backend.engine.kinetics import compute_kinetic_factor, compensate_dose
-from backend.engine.statutory import calculate_twa, classify_statutory_tier
+from backend.engine.statutory import (
+    compute_differential_shift_dose,
+    classify_statutory_tier_range,
+    evaluate_badge_integrity
+)
 from backend.engine.ledger import update_worker_exposure_ledger
 from backend.agents.onboarding import onboarding_manager
 from backend.agents.advisory import generate_dosimeter_advisory
@@ -82,10 +88,11 @@ class ScanSubmissionRequest(BaseModel):
     plant_unit: str = "CDU-1"
     shift_duration_hours: float = 8.0
     badge_id: str = "BAND-H2S-01"
-    delta_e: float = 4.2  # Optical color change ΔE
-    raw_optical_dose: Optional[float] = None  # If None, calculated from delta_e
-    override_temp_c: Optional[float] = None
-    override_rh_pct: Optional[float] = None
+    band_lifecycle_day: int = 1
+    start_delta_e: float = 0.0
+    end_delta_e: float = 4.2
+    patch_b_drift: float = 0.1
+    patch_c_condition: str = "NORMAL" # NORMAL, WARNING, COMPROMISED
 
 # Seed initial demo worker if DB is empty
 def seed_demo_data():
@@ -108,7 +115,8 @@ def seed_demo_data():
                     "pre_existing_conditions": ["Mild Allergic Rhinitis"],
                     "baseline_fev1_fvc_ratio": 0.82,
                     "allergies": ["Pollen"],
-                    "ocular_sensitivity": True
+                    "ocular_sensitivity": True,
+                    "historical_symptoms": ["Occasional eye stinging", "Slight sulfur smell perception"]
                 }),
                 ppe_details_json=json.dumps({
                     "respirator_type": "Half-Mask Air-Purifying",
@@ -122,7 +130,7 @@ def seed_demo_data():
             
             ledger = ExposureLedgerModel(
                 worker_id="EMP-1042",
-                rolling_7day_ppm_hr=6.4,
+                rolling_7day_ppm_hr=16.8,
                 rolling_30day_ppm_hr=22.5,
                 rolling_90day_ppm_hr=54.0,
                 lifetime_shifts_logged=12,
@@ -209,6 +217,7 @@ def list_workers(db: Session = Depends(get_db)):
     return [w.to_dict() for w in workers]
 
 @app.get("/api/workers/{worker_id}")
+@app.get("/api/control-room/workers/{worker_id}")
 def get_worker(worker_id: str, db: Session = Depends(get_db)):
     worker = db.query(WorkerModel).filter(WorkerModel.worker_id == worker_id).first()
     if not worker:
@@ -217,6 +226,22 @@ def get_worker(worker_id: str, db: Session = Depends(get_db)):
     recent_scans = [s.to_dict() for s in worker.scans[:10]]
     res = worker.to_dict()
     res["recent_scans"] = recent_scans
+    
+    # Calculate 90-day risk profile
+    worker_profile = WorkerProfile(
+        worker_id=worker.worker_id,
+        full_name=worker.full_name,
+        age=worker.age,
+        gender=worker.gender,
+        department=worker.department,
+        plant_unit=worker.plant_unit,
+        role=worker.role,
+        preferred_language=worker.preferred_language,
+        health_profile=HealthProfile(**json.loads(worker.health_profile_json or "{}")),
+        ppe_details=PPEDetails(**json.loads(worker.ppe_details_json or "{}")),
+        exposure_ledger=ExposureLedger(**(worker.ledger.to_dict() if worker.ledger else {}))
+    )
+    res["lung_risk_profile"] = calculate_chronic_lung_risk_score(worker_profile)
     return res
 
 @app.post("/api/scan/submit")
@@ -224,7 +249,6 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
     # 1. Fetch or create worker profile
     db_worker = db.query(WorkerModel).filter(WorkerModel.worker_id == payload.worker_id).first()
     if not db_worker:
-        # Create default on-the-fly worker profile
         db_worker = WorkerModel(
             worker_id=payload.worker_id,
             full_name=f"Worker {payload.worker_id}",
@@ -251,58 +275,65 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
         exposure_ledger=ExposureLedger(**worker_dict.get("exposure_ledger", {}))
     )
 
-    # 2. Derive raw optical dose from delta E if not explicitly supplied
-    # Calibration Curve: Dose (ppm·hr) = 2.15 * delta_E + 0.08 * (delta_E ^ 1.5)
-    if payload.raw_optical_dose is not None:
-        raw_dose = payload.raw_optical_dose
-    else:
-        raw_dose = round(2.15 * payload.delta_e + 0.08 * (payload.delta_e ** 1.5), 3)
-
-    # 3. Fetch Environmental Telemetry & Arrhenius factor
-    weather = get_kinetic_weather()
-    temp_c = payload.override_temp_c if payload.override_temp_c is not None else weather["temperature_c"]
-    rh_pct = payload.override_rh_pct if payload.override_rh_pct is not None else weather["relative_humidity_pct"]
-    
-    k_factor = compute_kinetic_factor(temp_c, rh_pct)
-    telemetry = EnvironmentalTelemetry(
-        temperature_c=temp_c,
-        relative_humidity_pct=rh_pct,
-        pressure_hpa=weather.get("pressure_hpa", 1013.25),
-        k_factor=k_factor,
-        source=weather.get("source", "Telemetry Station")
+    # 2. Differential Shift Exposure Math & Uncertainty Ranges
+    diff_res = compute_differential_shift_dose(
+        start_delta_e=payload.start_delta_e,
+        end_delta_e=payload.end_delta_e,
+        patch_b_drift=payload.patch_b_drift,
+        patch_c_condition=payload.patch_c_condition, # type: ignore
+        shift_hours=payload.shift_duration_hours
     )
 
-    # 4. Pure Deterministic Dosimetry Math (Zero LLM)
-    compensated_dose = compensate_dose(raw_dose, k_factor)
-    twa_ppm = calculate_twa(compensated_dose, payload.shift_duration_hours)
-    
-    # 5. Ledger Recomputation & Statutory Tiering
-    prior_7d = worker_profile.exposure_ledger.rolling_7day_ppm_hr
-    updated_ledger = update_worker_exposure_ledger(db, payload.worker_id, compensated_dose)
-    updated_7d = updated_ledger["rolling_7day_ppm_hr"]
-    
-    statutory_tier, is_single_critical = classify_statutory_tier(
-        twa_ppm=twa_ppm,
-        updated_7day_load_ppm_hr=updated_7d,
-        compensated_single_shift_dose=compensated_dose
+    # 3. Contextual Environmental Telemetry
+    weather = get_kinetic_weather()
+    telemetry = ContextualEnvironmentalTelemetry(
+        temperature_c=weather["temperature_c"],
+        relative_humidity_pct=weather["relative_humidity_pct"],
+        source=weather["source"]
+    )
+
+    # 4. Ledger Recomputation (Uncertainty Ranges)
+    prior_7d = worker_profile.exposure_ledger.rolling_7day_high_ppm_hr
+    updated_ledger = update_worker_exposure_ledger(
+        db, payload.worker_id, diff_res["dose_low"], diff_res["dose_high"]
+    )
+
+    # 5. Statutory Tier Classification on Exposure Range
+    tier, is_single_crit = classify_statutory_tier_range(
+        twa_low=diff_res["twa_low"],
+        twa_high=diff_res["twa_high"],
+        updated_7day_high=updated_ledger["load_7d_high"],
+        dose_high=diff_res["dose_high"]
     )
 
     metrics = ComputedMetrics(
-        compensated_dose_ppm_hr=compensated_dose,
-        shift_twa_ppm=twa_ppm,
+        net_delta_e=diff_res["net_delta_e"],
+        shift_dose_low_ppm_hr=diff_res["dose_low"],
+        shift_dose_high_ppm_hr=diff_res["dose_high"],
+        shift_dose_range_str=diff_res["dose_range_str"],
+        shift_twa_low_ppm=diff_res["twa_low"],
+        shift_twa_high_ppm=diff_res["twa_high"],
+        shift_twa_range_str=diff_res["twa_range_str"],
         shift_hours=payload.shift_duration_hours,
-        prior_7day_load=prior_7d,
-        updated_7day_load=updated_7d,
-        statutory_tier=statutory_tier,
-        is_single_shift_critical=is_single_critical
+        prior_7day_load_ppm_hr=prior_7d,
+        updated_7day_load_low=updated_ledger["load_7d_low"],
+        updated_7day_load_high=updated_ledger["load_7d_high"],
+        updated_7day_range_str=updated_ledger["range_7d_str"],
+        statutory_tier=tier, # type: ignore
+        measurement_confidence=diff_res["confidence"],
+        badge_integrity_warning=diff_res["integrity_warning"],
+        is_single_shift_critical=is_single_crit
     )
 
     scan_id = f"SCN-{uuid.uuid4().hex[:8].upper()}"
     badge_data = BadgeData(
         badge_id=payload.badge_id,
-        delta_e=payload.delta_e,
-        shelf_life_status="VALID",
-        raw_optical_dose=raw_dose
+        band_lifecycle_day=payload.band_lifecycle_day,
+        start_optical_density=payload.start_delta_e,
+        end_optical_density=payload.end_delta_e,
+        patch_b_drift=payload.patch_b_drift,
+        patch_c_condition=payload.patch_c_condition, # type: ignore
+        shelf_life_status="VALID"
     )
 
     scan_payload = ShiftScanPayload(
@@ -316,7 +347,7 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
         computed_metrics=metrics
     )
 
-    # 6. Generate Advisory with Hybrid RAG & Safety Locks
+    # 6. Generate Advisory with Uncertainty Ranges & Safety Locks
     advisory = generate_dosimeter_advisory(worker_profile, scan_payload)
 
     # 7. Persist Shift Scan to Database
@@ -327,18 +358,18 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
         timestamp=datetime.now(timezone.utc),
         shift_duration_hours=payload.shift_duration_hours,
         badge_id=badge_data.badge_id,
-        delta_e=badge_data.delta_e,
-        shelf_life_status=badge_data.shelf_life_status,
-        raw_optical_dose=badge_data.raw_optical_dose,
+        delta_e=diff_res["net_delta_e"],
+        shelf_life_status="VALID",
+        raw_optical_dose=diff_res["nominal_dose"],
         temperature_c=telemetry.temperature_c,
         relative_humidity_pct=telemetry.relative_humidity_pct,
-        k_factor=telemetry.k_factor,
+        k_factor=1.0,
         telemetry_source=telemetry.source,
-        compensated_dose_ppm_hr=metrics.compensated_dose_ppm_hr,
-        shift_twa_ppm=metrics.shift_twa_ppm,
-        updated_7day_load=metrics.updated_7day_load,
-        statutory_tier=metrics.statutory_tier,
-        is_single_shift_critical=metrics.is_single_shift_critical,
+        compensated_dose_ppm_hr=diff_res["nominal_dose"],
+        shift_twa_ppm=(diff_res["twa_low"] + diff_res["twa_high"]) / 2.0,
+        updated_7day_load=updated_ledger["load_7d_high"],
+        statutory_tier=tier,
+        is_single_shift_critical=is_single_crit,
         advisory_json=advisory.model_dump_json()
     )
     db.add(db_scan)
@@ -423,10 +454,18 @@ def onboard_page(request: Request):
     return HTMLResponse("<h1>Onboarding Page</h1>")
 
 @app.get("/scan", response_class=HTMLResponse)
+@app.get("/manager/scan", response_class=HTMLResponse)
 def scan_page(request: Request):
     if templates:
         return templates.TemplateResponse(request=request, name="scan.html")
-    return HTMLResponse("<h1>Dosimeter Badge Scan Page</h1>")
+    return HTMLResponse("<h1>Dosimeter Badge Scan & Triage Drawer</h1>")
+
+@app.get("/control-room/workers/{worker_id}", response_class=HTMLResponse)
+@app.get("/workers/{worker_id}", response_class=HTMLResponse)
+def worker_insights_page(request: Request, worker_id: str):
+    if templates:
+        return templates.TemplateResponse(request=request, name="worker_insights.html")
+    return HTMLResponse(f"<h1>Worker Insights: {worker_id}</h1>")
 
 @app.get("/supervisor", response_class=HTMLResponse)
 @app.get("/manager", response_class=HTMLResponse)

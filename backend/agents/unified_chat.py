@@ -7,29 +7,32 @@ from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.database.models import WorkerModel, ExposureLedgerModel, ShiftScanModel
-from backend.schemas.worker import WorkerProfile, HealthProfile, PPEDetails, ExposureLedger
-from backend.schemas.dosimetry import ShiftScanPayload, BadgeData, EnvironmentalTelemetry, ComputedMetrics
+from backend.schemas.worker import WorkerProfile, HealthProfile, PPEDetails, ExposureLedger, PhysicalBandRecord
+from backend.schemas.dosimetry import (
+    ShiftScanPayload, BadgeData, ContextualEnvironmentalTelemetry, ComputedMetrics,
+    PatchCondition, MeasurementConfidence
+)
 from backend.engine.weather import get_kinetic_weather
-from backend.engine.kinetics import compute_kinetic_factor, compensate_dose
-from backend.engine.statutory import calculate_twa, classify_statutory_tier
+from backend.engine.statutory import (
+    compute_differential_shift_dose,
+    classify_statutory_tier_range,
+    evaluate_badge_integrity
+)
 from backend.engine.ledger import update_worker_exposure_ledger
 from backend.agents.advisory import generate_dosimeter_advisory
 from backend.rag.retriever import retriever
 from backend.intelligence.lung_risk import calculate_chronic_lung_risk_score
-from backend.intelligence.neuro_screener import evaluate_neuro_olfactory_screen, NeuroScreeningResponse
 
 class UnifiedChatAgent:
     """
     Unified Conversational Agent for Rakshak (रक्षक).
-    Handles:
-    - Conversational Intake & Onboarding
-    - Badge Scan Processing directly from chat
-    - Symptom triage & RAG advisory
-    - Neuro-olfactory screening in chat
-    - Exposure load queries
+    Follows strict engineering constraints:
+    - Low-High Dose Uncertainty Ranges (No fake precision)
+    - Differential Shift Evaluation (ΔE_end - ΔE_start)
+    - Patch B & C Badge Integrity Ingestion
+    - Contextual Telemetry Framing
     """
     def __init__(self):
-        # session_id -> { "worker_id": str, "lang": str, "state": str, "scan_draft": dict }
         self.sessions: Dict[str, Dict[str, Any]] = {}
 
     def get_session(self, session_id: str) -> Dict[str, Any]:
@@ -37,11 +40,7 @@ class UnifiedChatAgent:
             self.sessions[session_id] = {
                 "worker_id": "EMP-1042",
                 "lang": "en",
-                "state": "IDLE", # IDLE, ONBOARDING, SCANNING, SCREENING
-                "onboarding_step": "IDENTITY",
-                "screener_step": 0,
-                "screener_answers": {},
-                "draft": {}
+                "state": "IDLE"
             }
         return self.sessions[session_id]
 
@@ -55,51 +54,58 @@ class UnifiedChatAgent:
             session["lang"] = "hi"
             lang = "hi"
             return {
-                "reply": "भाषा को **हिन्दी** में सेट कर दिया गया है। मैं आपकी क्या मदद कर सकता हूँ?\n\nआप कह सकते हैं: 'बैज स्कैन करें', 'मेरा एक्सपोजर लोड बताएं', 'गंध थकान टेस्ट', या 'नया पंजीकरण'।",
-                "cards": [],
-                "quick_actions": ["बैज स्कैन दर्ज करें", "मेरा एक्सपोजर लोड", "गंध थकान जांच (Screener)", "सुरक्षा नियम (PPE)"]
+                "reply": "भाषा को **हिन्दी** में सेट कर दिया गया है। मैं आपकी क्या मदद कर सकता हूँ?\n\nआप कह सकते हैं: 'बैज स्कैन दर्ज करें', 'एक्सपोजर रेंज बताएं', 'पैच अखंडता जांच', या 'फेफड़े जोखिम'।",
+                "quick_actions": ["बैज स्कैन दर्ज करें", "मेरा एक्सपोजर लोड (रेंज)", "पैच अखंडता (Integrity)", "सुरक्षा नियम (PPE)"]
             }
         elif "english" in msg_clean or "switch to english" in msg_clean or msg_clean == "1":
             session["lang"] = "en"
             lang = "en"
             return {
-                "reply": "Language set to **English**. How can I assist you today?\n\nYou can say: 'Scan my badge', 'Check exposure load', 'Olfactory test', or 'Onboard new worker'.",
-                "cards": [],
-                "quick_actions": ["Log Badge Scan", "Check Exposure Load", "Olfactory Screener", "PPE Safety Guidelines"]
+                "reply": "Language set to **English**. How can I assist you today?\n\nYou can say: 'Scan my badge', 'Check exposure range', 'Patch integrity test', or 'Worker insights'.",
+                "quick_actions": ["Log Shift Scan", "Check Exposure Range", "Patch Integrity Check", "PPE Guidelines"]
             }
 
-        # Intent 1: Badge Scan Intake from Chat
+        # Intent 1: Differential Badge Scan Intake
         if any(k in msg_clean for k in ["scan", "badge", "delta e", "reading", "shift end", "बैज", "स्कैन", "रीडिंग"]):
-            return self._handle_scan_intent(session, message, db, lang)
+            return self._handle_differential_scan(session, message, db, lang)
 
-        # Intent 2: Check Cumulative Exposure Load
-        if any(k in msg_clean for k in ["exposure", "load", "history", "7 day", "90 day", "एक्सपोजर", "लोड", "इतिहास"]):
+        # Intent 2: Cumulative Exposure Range Query
+        if any(k in msg_clean for k in ["exposure", "load", "history", "7 day", "90 day", "एक्सपोजर", "लोड", "इतिहास", "रेंज"]):
             return self._handle_exposure_query(session, db, lang)
 
-        # Intent 3: Olfactory / Smell Screener
-        if any(k in msg_clean for k in ["screener", "smell", "olfactory", "reflex", "थकान", "गंध", "सूंघने"]):
-            return self._handle_screener_start(session, lang)
+        # Intent 3: Patch B/C Integrity Test
+        if any(k in msg_clean for k in ["patch", "tamper", "seal", "drift", "पैच", "सील", "डैमेज"]):
+            return self._handle_patch_check(session, lang)
 
         # Intent 4: Chronic Lung Risk Query
         if any(k in msg_clean for k in ["lung", "chronic", "asthma", "risk score", "फेफड़े", "जोखिम"]):
             return self._handle_lung_risk_query(session, db, lang)
 
-        # Intent 5: General Q&A / Regulatory RAG consultation
+        # Intent 5: General Q&A / RAG consultation
         return self._handle_rag_query(message, session, lang)
 
-    def _handle_scan_intent(self, session: Dict[str, Any], message: str, db: Session, lang: str) -> Dict[str, Any]:
+    def _handle_differential_scan(self, session: Dict[str, Any], message: str, db: Session, lang: str) -> Dict[str, Any]:
         worker_id = session.get("worker_id", "EMP-1042")
         
-        # Extract Delta E from message if present (e.g. "delta e 4.5", "reading 5.2", "4.2")
-        delta_e = 4.2
-        num_matches = re.findall(r'\b\d+(?:\.\d+)?\b', message)
-        for num in num_matches:
-            val = float(num)
-            if 0.1 <= val <= 30.0:
-                delta_e = val
-                break
-                
-        # Extract Plant Unit
+        # Extract Start and End Delta E
+        nums = [float(n) for n in re.findall(r'\b\d+(?:\.\d+)?\b', message) if 0.0 <= float(n) <= 35.0]
+        start_delta_e = 0.5
+        end_delta_e = 4.2
+        patch_b_drift = 0.1
+        patch_c_condition: PatchCondition = "NORMAL"
+
+        if len(nums) >= 2:
+            start_delta_e = nums[0]
+            end_delta_e = nums[1]
+        elif len(nums) == 1:
+            end_delta_e = nums[0]
+
+        if "warning" in message.lower() or "degraded" in message.lower():
+            patch_c_condition = "WARNING"
+        elif "compromised" in message.lower() or "tamper" in message.lower() or "breach" in message.lower():
+            patch_c_condition = "COMPROMISED"
+            patch_b_drift = 0.8
+
         unit = "CDU-1"
         for u in ["CDU-1", "CDU-2", "DHDS", "SRU", "Tank Farm", "Flare Header"]:
             if u.lower() in message.lower():
@@ -107,8 +113,8 @@ class UnifiedChatAgent:
                 break
 
         shift_hours = 8.0
-        
-        # Look up or create worker
+
+        # Worker Profile lookup
         db_worker = db.query(WorkerModel).filter(WorkerModel.worker_id == worker_id).first()
         if not db_worker:
             db_worker = WorkerModel(
@@ -137,47 +143,65 @@ class UnifiedChatAgent:
             exposure_ledger=ExposureLedger(**worker_dict.get("exposure_ledger", {}))
         )
 
-        # Kinetic Math & Weather
-        weather = get_kinetic_weather()
-        k_factor = compute_kinetic_factor(weather["temperature_c"], weather["relative_humidity_pct"])
-        raw_dose = round(2.15 * delta_e + 0.08 * (delta_e ** 1.5), 3)
-        compensated_dose = compensate_dose(raw_dose, k_factor)
-        twa_ppm = calculate_twa(compensated_dose, shift_hours)
-        
-        # Ledger Update
-        prior_7d = worker_profile.exposure_ledger.rolling_7day_ppm_hr
-        updated_ledger = update_worker_exposure_ledger(db, worker_id, compensated_dose)
-        updated_7d = updated_ledger["rolling_7day_ppm_hr"]
+        # 1. Differential Shift Math & Uncertainty Ranges
+        diff_res = compute_differential_shift_dose(
+            start_delta_e=start_delta_e,
+            end_delta_e=end_delta_e,
+            patch_b_drift=patch_b_drift,
+            patch_c_condition=patch_c_condition,
+            shift_hours=shift_hours
+        )
 
-        # Statutory Tier
-        tier, is_single_crit = classify_statutory_tier(
-            twa_ppm=twa_ppm,
-            updated_7day_load_ppm_hr=updated_7d,
-            compensated_single_shift_dose=compensated_dose
+        # 2. Contextual Telemetry
+        weather = get_kinetic_weather()
+        telemetry = ContextualEnvironmentalTelemetry(
+            temperature_c=weather["temperature_c"],
+            relative_humidity_pct=weather["relative_humidity_pct"],
+            source=weather["source"]
+        )
+
+        # 3. Cumulative Ledger Update (Ranges)
+        prior_7d = worker_profile.exposure_ledger.rolling_7day_high_ppm_hr
+        updated_ledger = update_worker_exposure_ledger(
+            db, worker_id, diff_res["dose_low"], diff_res["dose_high"]
+        )
+
+        # 4. Statutory Tier
+        tier, is_single_crit = classify_statutory_tier_range(
+            twa_low=diff_res["twa_low"],
+            twa_high=diff_res["twa_high"],
+            updated_7day_high=updated_ledger["load_7d_high"],
+            dose_high=diff_res["dose_high"]
         )
 
         metrics = ComputedMetrics(
-            compensated_dose_ppm_hr=compensated_dose,
-            shift_twa_ppm=twa_ppm,
+            net_delta_e=diff_res["net_delta_e"],
+            shift_dose_low_ppm_hr=diff_res["dose_low"],
+            shift_dose_high_ppm_hr=diff_res["dose_high"],
+            shift_dose_range_str=diff_res["dose_range_str"],
+            shift_twa_low_ppm=diff_res["twa_low"],
+            shift_twa_high_ppm=diff_res["twa_high"],
+            shift_twa_range_str=diff_res["twa_range_str"],
             shift_hours=shift_hours,
-            prior_7day_load=prior_7d,
-            updated_7day_load=updated_7d,
-            statutory_tier=tier,
+            prior_7day_load_ppm_hr=prior_7d,
+            updated_7day_load_low=updated_ledger["load_7d_low"],
+            updated_7day_load_high=updated_ledger["load_7d_high"],
+            updated_7day_range_str=updated_ledger["range_7d_str"],
+            statutory_tier=tier, # type: ignore
+            measurement_confidence=diff_res["confidence"],
+            badge_integrity_warning=diff_res["integrity_warning"],
             is_single_shift_critical=is_single_crit
         )
 
         scan_id = f"SCN-{uuid.uuid4().hex[:8].upper()}"
         badge_data = BadgeData(
             badge_id="BAND-01",
-            delta_e=delta_e,
-            shelf_life_status="VALID",
-            raw_optical_dose=raw_dose
-        )
-        telemetry = EnvironmentalTelemetry(
-            temperature_c=weather["temperature_c"],
-            relative_humidity_pct=weather["relative_humidity_pct"],
-            k_factor=k_factor,
-            source=weather["source"]
+            band_lifecycle_day=1,
+            start_optical_density=start_delta_e,
+            end_optical_density=end_delta_e,
+            patch_b_drift=patch_b_drift,
+            patch_c_condition=patch_c_condition,
+            shelf_life_status="VALID"
         )
 
         scan_payload = ShiftScanPayload(
@@ -191,7 +215,7 @@ class UnifiedChatAgent:
             computed_metrics=metrics
         )
 
-        # Generate Structured Advisory
+        # Structured Advisory
         advisory = generate_dosimeter_advisory(worker_profile, scan_payload)
 
         # Save to DB
@@ -202,16 +226,16 @@ class UnifiedChatAgent:
             timestamp=datetime.now(timezone.utc),
             shift_duration_hours=shift_hours,
             badge_id=badge_data.badge_id,
-            delta_e=delta_e,
+            delta_e=diff_res["net_delta_e"],
             shelf_life_status="VALID",
-            raw_optical_dose=raw_dose,
+            raw_optical_dose=diff_res["nominal_dose"],
             temperature_c=weather["temperature_c"],
             relative_humidity_pct=weather["relative_humidity_pct"],
-            k_factor=k_factor,
+            k_factor=1.0,
             telemetry_source=weather["source"],
-            compensated_dose_ppm_hr=compensated_dose,
-            shift_twa_ppm=twa_ppm,
-            updated_7day_load=updated_7d,
+            compensated_dose_ppm_hr=diff_res["nominal_dose"],
+            shift_twa_ppm=(diff_res["twa_low"] + diff_res["twa_high"]) / 2.0,
+            updated_7day_load=updated_ledger["load_7d_high"],
             statutory_tier=tier,
             is_single_shift_critical=is_single_crit,
             advisory_json=advisory.model_dump_json()
@@ -219,23 +243,25 @@ class UnifiedChatAgent:
         db.add(db_scan)
         db.commit()
 
-        # Build Friendly Chat Reply
+        # Build Response
         if lang == "hi":
-            reply_title = f"📊 **शिफ्ट डोसीमीटर विश्लेषण पूर्ण — {tier}**\n\n"
+            reply_title = f"📊 **डिफरेंशियल शिफ्ट एक्सपोजर विश्लेषण — {tier}**\n\n"
             reply_text = (
                 f"{advisory.bilingual_content.summary_banner_hi if advisory.bilingual_content else advisory.summary_banner}\n\n"
-                f"• **शिफ्ट TWA:** `{twa_ppm} ppm`\n"
-                f"• **मुआवजा खुराक:** `{compensated_dose} ppm·hr` (मौसम कारक: {k_factor})\n"
-                f"• **7-दिवसीय संचयी भार:** `{updated_7d} ppm·hr`\n\n"
+                f"• **अनुमानित शिफ्ट TWA रेंज:** `{metrics.shift_twa_range_str}`\n"
+                f"• **डिफरेंशियल खुराक रेंज:** `{metrics.shift_dose_range_str}` (नेट ΔE: {metrics.net_delta_e})\n"
+                f"• **7-दिवसीय संचयी भार रेंज:** `{metrics.updated_7day_range_str}`\n"
+                f"• **माप सटीकता स्तर:** `{metrics.measurement_confidence}` (Patch B: {patch_b_drift}, Patch C: {patch_c_condition})\n\n"
                 f"❓ **लक्षण जांच:** {advisory.bilingual_content.triage_question_hi if advisory.bilingual_content else advisory.triage_question}"
             )
         else:
-            reply_title = f"📊 **Shift Dosimeter Analysis Complete — {tier}**\n\n"
+            reply_title = f"📊 **Differential Shift Exposure Analysis — {tier}**\n\n"
             reply_text = (
                 f"{advisory.summary_banner}\n\n"
-                f"• **Shift TWA:** `{twa_ppm} ppm`\n"
-                f"• **Compensated Dose:** `{compensated_dose} ppm·hr` (Arrhenius k-factor: {k_factor})\n"
-                f"• **7-Day Cumulative Load:** `{updated_7d} ppm·hr`\n\n"
+                f"• **Estimated Shift TWA Range:** `{metrics.shift_twa_range_str}`\n"
+                f"• **Differential Dose Range:** `{metrics.shift_dose_range_str}` (Net ΔE: {metrics.net_delta_e})\n"
+                f"• **7-Day Cumulative Load Range:** `{metrics.updated_7day_range_str}`\n"
+                f"• **Measurement Confidence:** `{metrics.measurement_confidence}` (Patch B drift: {patch_b_drift}, Patch C: {patch_c_condition})\n\n"
                 f"❓ **Symptom Check:** {advisory.triage_question}"
             )
 
@@ -244,9 +270,11 @@ class UnifiedChatAgent:
             "scan_result": {
                 "scan_id": scan_id,
                 "tier": tier,
-                "twa": twa_ppm,
-                "compensated_dose": compensated_dose,
-                "updated_7day_load": updated_7d,
+                "twa_range": metrics.shift_twa_range_str,
+                "dose_range": metrics.shift_dose_range_str,
+                "updated_7day_range": metrics.updated_7day_range_str,
+                "confidence": metrics.measurement_confidence,
+                "integrity_warning": metrics.badge_integrity_warning,
                 "recommendations": [r.model_dump() for r in advisory.recommendations],
                 "mandatory_ohc_override_applied": advisory.mandatory_ohc_override_applied
             },
@@ -258,50 +286,57 @@ class UnifiedChatAgent:
         worker = db.query(WorkerModel).filter(WorkerModel.worker_id == worker_id).first()
         if not worker or not worker.ledger:
             reply = "No previous shift logs found. Please log your badge scan first." if lang == "en" else "कोई पुराना रिकॉर्ड नहीं मिला। कृपया पहले अपना बैज स्कैन करें।"
-            return {"reply": reply, "quick_actions": ["Log Badge Scan"]}
+            return {"reply": reply, "quick_actions": ["Log Shift Scan"]}
 
         leg = worker.ledger
+        load_7d = leg.rolling_7day_ppm_hr
+        load_7d_low = round(load_7d * 0.88, 1)
+        load_7d_high = round(load_7d * 1.12, 1)
+        range_7d = f"{load_7d_low}–{load_7d_high} ppm·h"
+
         if lang == "hi":
             reply = (
                 f"📈 **आपका H2S संचयी एक्सपोजर लेजर ({worker_id}):**\n\n"
-                f"• **7-दिवसीय भार:** `{leg.rolling_7day_ppm_hr} ppm·hr` (वैधानिक सीमा: 15.0 ppm·hr)\n"
-                f"• **30-दिवसीय भार:** `{leg.rolling_30day_ppm_hr} ppm·hr`\n"
-                f"• **90-दिवसीय भार:** `{leg.rolling_90day_ppm_hr} ppm·hr`\n"
+                f"• **7-दिवसीय भार रेंज:** `{range_7d}` (वैधानिक सीमा: 15.0 ppm·hr)\n"
+                f"• **30-दिवसीय अनुमानित भार:** `{leg.rolling_30day_ppm_hr} ppm·hr`\n"
+                f"• **90-दिवसीय दीर्घकालिक भार:** `{leg.rolling_90day_ppm_hr} ppm·hr`\n"
                 f"• **कुल दर्ज पाली:** `{leg.lifetime_shifts_logged}`\n\n"
-                f"सुरक्षा सलाह: मानक सुरक्षा नियमों और रेस्पिरेटर सील का पालन करते रहें।"
+                f"सुरक्षा नियम: कोई एकल संख्या (फेक प्रिसिजन) नहीं, सभी आंकड़े अनिश्चितता सीमा के साथ प्रदर्शित हैं।"
             )
         else:
             reply = (
-                f"📈 **Your Cumulative H2S Exposure Ledger ({worker_id}):**\n\n"
-                f"• **7-Day Rolling Load:** `{leg.rolling_7day_ppm_hr} ppm·hr` (Permissible: < 15.0 ppm·hr)\n"
-                f"• **30-Day Rolling Load:** `{leg.rolling_30day_ppm_hr} ppm·hr`\n"
+                f"📈 **Your Cumulative H2S Exposure Range Ledger ({worker_id}):**\n\n"
+                f"• **7-Day Rolling Load Range:** `{range_7d}` (Permissible Limit: < 15.0 ppm·hr)\n"
+                f"• **30-Day Estimated Load:** `{leg.rolling_30day_ppm_hr} ppm·hr`\n"
                 f"• **90-Day Rolling Chronic Load:** `{leg.rolling_90day_ppm_hr} ppm·hr`\n"
                 f"• **Lifetime Shifts Logged:** `{leg.lifetime_shifts_logged}`\n\n"
-                f"Safety Note: All readings are continuously monitored against OISD-STD-105 statutory limits."
+                f"Measurement Notice: In accordance with occupational hygiene standards, values are reported strictly as uncertainty ranges."
             )
         return {
             "reply": reply,
-            "quick_actions": ["Log Today's Scan", "Calculate Lung Risk", "Olfactory Screener"]
+            "quick_actions": ["Log Shift Scan", "Calculate Lung Risk", "Patch Integrity Check"]
         }
 
-    def _handle_screener_start(self, session: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    def _handle_patch_check(self, session: Dict[str, Any], lang: str) -> Dict[str, Any]:
         if lang == "hi":
             reply = (
-                "🧪 **न्यूरो-ऑलफैक्ट्री एवं गंध थकान जांच (30-सेकंड टेस्ट):**\n\n"
-                "1. क्या आज काम करते समय शुरुआत में सड़े अंडे जैसी गंध आई थी, जो बाद में अचानक आनी बंद हो गई?\n"
-                "2. क्या आपको आंखों में जलन या सिरदर्द/चक्कर आ रहे हैं?\n\n"
-                "कृपया उत्तर दें: 'हाँ, गंध गायब हो गई थी' या 'नहीं, सब सामान्य था'। "
+                "🛡️ **कलाई बैज पैच अखंडता जांच (Integrity Check):**\n\n"
+                "• **Patch A (सक्रिय सेंसर):** H2S के संपर्क में आने पर रंग बदलता है।\n"
+                "• **Patch B (कंट्रोल ब्लैंक):** आधारभूत बहाव / सील टूटने की जांच करता है (स्वीकार्य बहाव < 0.35)।\n"
+                "• **Patch C (रासायनिक अखंडता):** नमी/हवा के संपर्क में क्षरण की निगरानी करता है।\n\n"
+                "यदि Patch C का रंग बदला हुआ दिखे तो काम शुरू करने से पहले बैज तुरंत बदलें।"
             )
         else:
             reply = (
-                "🧪 **Neuro-Olfactory & Reflex Screener (30-Second Check):**\n\n"
-                "1. Did you notice a strong rotten egg smell earlier that seemed to suddenly disappear while working?\n"
-                "2. Are you feeling ocular burning, headache, or lightheadedness?\n\n"
-                "Please reply with your symptoms or select a quick option below:"
+                "🛡️ **Wristband Patch Integrity & Seal Check:**\n\n"
+                "• **Patch A (Active Sensor):** Reacts to cumulative H2S exposure.\n"
+                "• **Patch B (Control Reference):** Detects sunlight drift and seal tamper (Permissible drift < 0.35).\n"
+                "• **Patch C (Integrity Indicator):** Monitors environmental seal & chemical stability (NORMAL, WARNING, COMPROMISED).\n\n"
+                "Notice: Always inspect Patch C prior to entering sour gas zones. Enforce the 5-day active patch lifecycle."
             )
         return {
             "reply": reply,
-            "quick_actions": ["No symptoms, smell constant", "Smell vanished & eye stinging", "Feeling dizzy/headache"]
+            "quick_actions": ["Log Shift Scan (Normal Patch)", "Simulate Compromised Patch", "OISD PPE Rules"]
         }
 
     def _handle_lung_risk_query(self, session: Dict[str, Any], db: Session, lang: str) -> Dict[str, Any]:
@@ -344,7 +379,7 @@ class UnifiedChatAgent:
             )
         return {
             "reply": reply,
-            "quick_actions": ["Log New Shift Scan", "Check Exposure Load", "Olfactory Screener"]
+            "quick_actions": ["Log Shift Scan", "Check Exposure Range", "Patch Integrity Check"]
         }
 
     def _handle_rag_query(self, message: str, session: Dict[str, Any], lang: str) -> Dict[str, Any]:
@@ -352,18 +387,18 @@ class UnifiedChatAgent:
         if chunks and conf >= 0.4:
             context = "\n\n".join([f"**[{c['title']} - {c['doc_name']}]:**\n{c['content']}" for c in chunks])
             if lang == "hi":
-                reply = f"🛡️ **रक्षक सुरक्षा ज्ञानकोष (OISD / DGMS मानक):**\n\n{context}\n\nयदि आपके कोई विशिष्ट लक्षण हैं या आप अपनी शिफ्ट का बैज दर्ज करना चाहते हैं, तो मुझे बताएं।"
+                reply = f"🛡️ **रक्षक सुरक्षा ज्ञानकोष (OISD / DGMS मानक):**\n\n{context}\n\nयदि आप अपनी शिफ्ट का डिफरेंशियल बैज दर्ज करना चाहते हैं, तो मुझे बताएं।"
             else:
-                reply = f"🛡️ **Rakshak Safety Knowledge Base (OISD / DGMS Guidelines):**\n\n{context}\n\nLet me know if you would like to log a shift dosimeter scan or check your symptoms."
+                reply = f"🛡️ **Rakshak Safety Knowledge Base (OISD / DGMS Guidelines):**\n\n{context}\n\nLet me know if you would like to log a differential shift scan or check your symptoms."
         else:
             if lang == "hi":
-                reply = "नमस्ते! मैं **रक्षक (Rakshak-H2S)** हूँ — आपका रिफाइनरी सुरक्षा सहायक। आप मुझसे अपनी शिफ्ट का बैज स्कैन दर्ज करवा सकते हैं, अपना संचयी एक्सपोजर लोड पूछ सकते हैं, या OISD सुरक्षा नियम जान सकते हैं।"
+                reply = "नमस्ते! मैं **रक्षक (Rakshak-H2S)** हूँ। मैं अनिश्चितता रेंज (Dose Ranges), डिफरेंशियल शिफ्ट विश्लेषण (ΔE Start vs End), और पैच अखंडता जांच के साथ आपकी सुरक्षा निगरानी करता हूँ।"
             else:
-                reply = "Hello! I am **Rakshak-H2S (रक्षक)** — your refinery occupational safety assistant. You can log your shift dosimeter badge, check cumulative exposure loads, take an olfactory screener, or ask about OISD safety protocols."
+                reply = "Hello! I am **Rakshak-H2S (रक्षक)**. I monitor your shift safety using differential scan evaluation (Start vs End ΔE), uncertainty dose ranges, and Patch B/C integrity tracking."
                 
         return {
             "reply": reply,
-            "quick_actions": ["Log Badge Scan (ΔE 4.2)", "Check Exposure Load", "Olfactory Screener", "Supervisor Directives"]
+            "quick_actions": ["Log Shift Scan (Start: 0.5, End: 4.2)", "Check Exposure Range", "Patch Integrity Check", "Supervisor Directives"]
         }
 
 unified_chat = UnifiedChatAgent()

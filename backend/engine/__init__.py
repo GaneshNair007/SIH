@@ -1,13 +1,18 @@
 from .weather import get_kinetic_weather
 from .kinetics import compute_kinetic_factor, compensate_dose
-from .statutory import calculate_twa, classify_statutory_tier
+from .statutory import (
+    evaluate_badge_integrity,
+    compute_differential_shift_dose,
+    classify_statutory_tier_range
+)
 from .ledger import update_worker_exposure_ledger
 
 __all__ = [
     "get_kinetic_weather",
     "compute_kinetic_factor",
     "compensate_dose",
-    "calculate_twa",
-    "classify_statutory_tier",
+    "evaluate_badge_integrity",
+    "compute_differential_shift_dose",
+    "classify_statutory_tier_range",
     "update_worker_exposure_ledger"
 ]

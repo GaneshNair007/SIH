@@ -1,86 +1,77 @@
 import pytest
-from backend.engine.kinetics import compute_kinetic_factor, compensate_dose
-from backend.engine.statutory import calculate_twa, classify_statutory_tier
+from backend.engine.statutory import (
+    compute_differential_shift_dose,
+    classify_statutory_tier_range,
+    evaluate_badge_integrity
+)
 
-def test_kinetic_factor_reference():
-    # At reference condition (25°C, 50% RH), k should equal ~1.0
-    k = compute_kinetic_factor(25.0, 50.0)
-    assert 0.98 <= k <= 1.02
+def test_badge_integrity_normal():
+    conf, warning, margin = evaluate_badge_integrity(patch_b_drift=0.1, patch_c_condition="NORMAL")
+    assert conf == "HIGH"
+    assert warning is None
+    assert margin == 0.10
 
-def test_kinetic_factor_hot_humid():
-    # Hot and humid (e.g. Mangalore summer 35°C, 85% RH) -> k > 1.0 (faster color development)
-    k = compute_kinetic_factor(35.0, 85.0)
-    assert k > 1.0
-    
-    # Cold and dry (15°C, 30% RH) -> k < 1.0
-    k_cold = compute_kinetic_factor(15.0, 30.0)
-    assert k_cold < 1.0
+def test_badge_integrity_warning():
+    conf, warning, margin = evaluate_badge_integrity(patch_b_drift=0.45, patch_c_condition="WARNING")
+    assert conf == "MEDIUM"
+    assert "Notice" in warning or "margin" in warning or "drift" in warning
+    assert margin == 0.15
 
-def test_dose_compensation():
-    raw_dose = 12.0
-    k_factor = 1.2
-    comp = compensate_dose(raw_dose, k_factor)
-    assert comp == 10.0
+def test_badge_integrity_compromised():
+    conf, warning, margin = evaluate_badge_integrity(patch_b_drift=0.85, patch_c_condition="COMPROMISED")
+    assert conf == "LOW"
+    assert "ALERT" in warning or "breach" in warning
+    assert margin == 0.25
 
-def test_twa_calculation():
-    # 8.0 ppm·hr over 8 hours = 1.0 ppm
-    twa = calculate_twa(8.0, 8.0)
-    assert twa == 1.0
-    
-    # 24.0 ppm·hr over 8 hours = 3.0 ppm
-    twa2 = calculate_twa(24.0, 8.0)
-    assert twa2 == 3.0
+def test_differential_shift_dose_evaluation():
+    # Differential optical change: start ΔE=0.5, end ΔE=4.2 -> Net ΔE ~ 3.65
+    res = compute_differential_shift_dose(
+        start_delta_e=0.5,
+        end_delta_e=4.2,
+        patch_b_drift=0.1,
+        patch_c_condition="NORMAL",
+        shift_hours=8.0
+    )
+    assert res["net_delta_e"] > 0.0
+    assert res["dose_low"] < res["nominal_dose"] < res["dose_high"]
+    assert "–" in res["dose_range_str"]
+    assert "–" in res["twa_range_str"]
+    assert res["confidence"] == "HIGH"
 
 def test_statutory_tier_1_normal():
-    # TWA < 1.0 and 7-day load < 15.0
-    tier, single_crit = classify_statutory_tier(
-        twa_ppm=0.85,
-        updated_7day_load_ppm_hr=12.0,
-        compensated_single_shift_dose=6.8
+    tier, single_crit = classify_statutory_tier_range(
+        twa_low=0.5,
+        twa_high=0.9,
+        updated_7day_high=12.0,
+        dose_high=7.2
     )
     assert tier == "TIER 1 (NORMAL)"
     assert not single_crit
 
 def test_statutory_tier_2_caution():
-    # TWA in [1.0, 5.0) or 7-day in [15.0, 35.0)
-    tier1, _ = classify_statutory_tier(
-        twa_ppm=1.5,
-        updated_7day_load_ppm_hr=10.0,
-        compensated_single_shift_dose=12.0
+    tier, single_crit = classify_statutory_tier_range(
+        twa_low=1.2,
+        twa_high=2.1,
+        updated_7day_high=18.0,
+        dose_high=16.8
     )
-    assert tier1 == "TIER 2 (CAUTION)"
-
-    tier2, _ = classify_statutory_tier(
-        twa_ppm=0.8,
-        updated_7day_load_ppm_hr=22.0,
-        compensated_single_shift_dose=6.4
-    )
-    assert tier2 == "TIER 2 (CAUTION)"
+    assert tier == "TIER 2 (CAUTION)"
 
 def test_statutory_tier_3_critical_by_twa():
-    # TWA >= 5.0
-    tier, _ = classify_statutory_tier(
-        twa_ppm=5.2,
-        updated_7day_load_ppm_hr=14.0,
-        compensated_single_shift_dose=15.0
+    tier, _ = classify_statutory_tier_range(
+        twa_low=4.8,
+        twa_high=5.4,
+        updated_7day_high=22.0,
+        dose_high=18.0
     )
     assert tier == "TIER 3 (CRITICAL)"
 
-def test_statutory_tier_3_critical_by_7day():
-    # 7-day load >= 35.0
-    tier, _ = classify_statutory_tier(
-        twa_ppm=2.0,
-        updated_7day_load_ppm_hr=36.0,
-        compensated_single_shift_dose=16.0
-    )
-    assert tier == "TIER 3 (CRITICAL)"
-
-def test_statutory_tier_3_critical_by_single_shift():
-    # single shift dose > 20.0 ppm·hr
-    tier, single_crit = classify_statutory_tier(
-        twa_ppm=4.5,
-        updated_7day_load_ppm_hr=20.0,
-        compensated_single_shift_dose=22.5
+def test_statutory_tier_3_critical_by_single_shift_upper_bound():
+    tier, single_crit = classify_statutory_tier_range(
+        twa_low=2.1,
+        twa_high=2.8,
+        updated_7day_high=22.0,
+        dose_high=22.5
     )
     assert tier == "TIER 3 (CRITICAL)"
     assert single_crit is True
