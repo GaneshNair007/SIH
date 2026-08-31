@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block title %}Rakshak (रक्षक) — Shift Supervisor Command Portal{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-line text-amber-400"></i>
+                <span data-i18n="sup_title">Shift Supervisor Command Portal</span>
+            </h1>
+            <p class="text-xs text-slate-400" data-i18n="sup_subtitle">Fugitive Emission Triangulation, Plant-Wide Ledgers & OISD Compliance</p>
+        </div>
+        <button onclick="fetchSupervisorData()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 rounded-lg border border-slate-700 transition flex items-center gap-2">
+            <i class="fa-solid fa-rotate"></i>
+            <span>Refresh Telemetry</span>
+        </button>
+    </div>
+
+    <!-- 2D Plant Layout & Heatmap Section -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- Interactive 2D Plant Layout Map (7 cols) -->
+        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-map-location-dot text-amber-400"></i>
+                    <span>Plant Fugitive Emission Heatmap (MRPL Zone)</span>
+                </h3>
+                <span class="text-[11px] font-mono text-slate-400">2D IDW Triangulation</span>
+            </div>
+
+            <!-- Visual Plant Map Canvas Container -->
+            <div class="relative w-full h-80 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center p-4">
+                <!-- Background Grid Lines -->
+                <div class="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:24px_24px] opacity-20"></div>
+
+                <!-- Plant Unit Interactive Nodes will be injected here -->
+                <div id="plantNodesContainer" class="absolute inset-0"></div>
+
+                <!-- Suspected Leak Pinpoint Marker -->
+                <div id="leakPinpointMarker" class="absolute z-20 hidden transform -translate-x-1/2 -translate-y-1/2">
+                    <div class="relative flex items-center justify-center">
+                        <span class="animate-ping absolute inline-flex h-8 w-8 rounded-full bg-rose-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-4 w-4 bg-rose-600 border-2 border-white shadow-lg shadow-rose-600"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Heatmap Legend -->
+            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800">
+                <div class="flex items-center gap-4">
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Tier 1 (&lt; 1.0 ppm)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Tier 2 (1.0–5.0 ppm)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Tier 3 (&ge; 5.0 ppm)</span>
+                </div>
+                <span>Coordinates: 12.9904° N, 74.8219° E</span>
+            </div>
+        </div>
+
+        <!-- Suspected Fugitive Leak Alert & Action Card (5 cols) -->
+        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-4">
+            <div>
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-crosshairs text-rose-400"></i>
+                        <span>Leak Triangulation Vector</span>
+                    </h3>
+                    <span id="triangulationConfidence" class="text-xs font-mono font-bold text-rose-400 bg-rose-950 px-2.5 py-0.5 rounded border border-rose-800">92% CONFIDENCE</span>
+                </div>
+
+                <div class="space-y-3 text-xs">
+                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Suspected Unit / Node:</span>
+                            <span id="suspectedUnitName" class="font-bold text-white text-sm">DHDS / Claus SRU</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Grid Coordinates:</span>
+                            <span id="suspectedGridCoords" class="font-mono text-cyan-400 font-bold">X: 65, Y: 45</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/60 space-y-1.5">
+                        <div class="font-bold text-rose-300 uppercase tracking-wide text-[11px]">Recommended Engineering Directive:</div>
+                        <p id="leakDirectiveText" class="text-slate-200 leading-relaxed">
+                            Deploy PID gas sniffing squad to inspect high-pressure recycle loop flange gasket and stripper overhead sampling point immediately.
+                        </p>
+                    </div>
+
+                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1 text-slate-400 text-[11px]">
+                        <div><b>OISD-STD-166 Cl. 5.1 Mandate:</b></div>
+                        <div>Inspect pump mechanical seals, valve packing glands, and sample drains in affected sub-zone.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-[11px] text-slate-500 font-mono text-center">
+                Last Triangulation Update: Just Now
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Shift Scans & Exposure Ledger Table -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <i class="fa-solid fa-table-list text-cyan-400"></i>
+                <span>Recent Shift Dosimeter Scans & OISD Reports</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono" id="totalScansCounter">Loading records...</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="bg-slate-950 text-slate-400 uppercase font-semibold border-b border-slate-800">
+                        <th class="p-3">Scan ID</th>
+                        <th class="p-3">Worker ID</th>
+                        <th class="p-3">Plant Unit</th>
+                        <th class="p-3">Shift TWA</th>
+                        <th class="p-3">Comp. Dose</th>
+                        <th class="p-3">7-Day Load</th>
+                        <th class="p-3">Statutory Tier</th>
+                        <th class="p-3 text-right">OISD Form-A</th>
+                    </tr>
+                </thead>
+                <tbody id="supervisorScansTable" class="divide-y divide-slate-800">
+                    <!-- Dynamic scan rows -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function fetchSupervisorData() {
+    try {
+        // Fetch Heatmap data
+        const heatRes = await fetch('/api/supervisor/heatmap');
+        const heatData = await heatRes.json();
+        renderHeatmap(heatData);
+
+        // Fetch recent workers/scans
+        const workersRes = await fetch('/api/workers');
+        const workers = await workersRes.json();
+        renderScansTable(workers);
+    } catch (e) {
+        console.error('Error loading supervisor data:', e);
+    }
+}
+
+function renderHeatmap(data) {
+    const container = document.getElementById('plantNodesContainer');
+    container.innerHTML = '';
+
+    const nodes = data.nodes || [];
+    nodes.forEach(n => {
+        const el = document.createElement('div');
+        el.className = 'absolute transform -translate-x-1/2 -translate-y-1/2 p-2 rounded-xl border transition-all cursor-pointer group shadow-lg';
+        el.style.left = n.x + '%';
+        el.style.top = n.y + '%';
+
+        let colorStyle = 'bg-emerald-950/80 border-emerald-700 text-emerald-300';
+        let pingColor = 'bg-emerald-400';
+        if (n.status === 'CRITICAL') {
+            colorStyle = 'bg-rose-950/90 border-rose-600 text-rose-300';
+            pingColor = 'bg-rose-400';
+        } else if (n.status === 'CAUTION') {
+            colorStyle = 'bg-amber-950/90 border-amber-600 text-amber-300';
+            pingColor = 'bg-amber-400';
+        }
+
+        el.className += ` ${colorStyle}`;
+        el.innerHTML = `
+            <div class="flex items-center gap-1.5 font-bold text-[11px]">
+                <span class="w-2 h-2 rounded-full ${pingColor} animate-pulse"></span>
+                <span>${n.unit_id}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 font-mono mt-0.5">TWA: ${n.max_twa_ppm} ppm</div>
+            <!-- Tooltip -->
+            <div class="hidden group-hover:block absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2.5 py-1.5 bg-slate-900 border border-slate-700 text-white rounded text-[10px] whitespace-nowrap shadow-xl z-30">
+                ${n.name}<br/>Max: ${n.max_twa_ppm} ppm (${n.scans_count} scans)
+            </div>
+        `;
+        container.appendChild(el);
+    });
+
+    // Update suspected leak card
+    const leak = data.suspected_leak;
+    if (leak) {
+        document.getElementById('suspectedUnitName').textContent = leak.zone;
+        document.getElementById('suspectedGridCoords').textContent = `X: ${leak.estimated_x}%, Y: ${leak.estimated_y}%`;
+        document.getElementById('triangulationConfidence').textContent = `${leak.confidence_pct}% CONFIDENCE`;
+        document.getElementById('leakDirectiveText').textContent = leak.recommended_action;
+
+        // Position leak pinpoint marker
+        const marker = document.getElementById('leakPinpointMarker');
+        marker.classList.remove('hidden');
+        marker.style.left = leak.estimated_x + '%';
+        marker.style.top = leak.estimated_y + '%';
+    }
+}
+
+async function renderScansTable(workers) {
+    const tbody = document.getElementById('supervisorScansTable');
+    tbody.innerHTML = '';
+
+    let totalScans = 0;
+    for (const w of workers) {
+        // Fetch detailed profile with scans
+        const detRes = await fetch(`/api/workers/${w.worker_id}`);
+        const det = await detRes.json();
+        const scans = det.recent_scans || [];
+        totalScans += scans.length;
+
+        scans.forEach(s => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-slate-800/50 transition';
+
+            const tier = s.statutory_tier;
+            let tierClass = 'text-emerald-400 bg-emerald-950 border-emerald-800';
+            if (tier.includes('TIER 3')) tierClass = 'text-rose-400 bg-rose-950 border-rose-800';
+            else if (tier.includes('TIER 2')) tierClass = 'text-amber-400 bg-amber-950 border-amber-800';
+
+            tr.innerHTML = `
+                <td class="p-3 font-mono text-cyan-400">${s.scan_id}</td>
+                <td class="p-3 font-semibold text-white">${s.worker_id} (${det.full_name})</td>
+                <td class="p-3 text-slate-300 font-medium">${s.plant_unit}</td>
+                <td class="p-3 font-mono font-bold text-white">${s.computed_metrics.shift_twa_ppm} ppm</td>
+                <td class="p-3 font-mono text-slate-300">${s.computed_metrics.compensated_dose_ppm_hr} ppm·hr</td>
+                <td class="p-3 font-mono text-amber-400 font-bold">${s.computed_metrics.updated_7day_load} ppm·hr</td>
+                <td class="p-3">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${tierClass}">
+                        ${tier}
+                    </span>
+                </td>
+                <td class="p-3 text-right">
+                    <a href="/api/supervisor/incident-pdf/${s.scan_id}" target="_blank" class="px-3 py-1 bg-amber-600/80 hover:bg-amber-500 text-white rounded text-[11px] font-bold transition inline-flex items-center gap-1">
+                        <i class="fa-solid fa-file-pdf"></i>
+                        <span>PDF</span>
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.getElementById('totalScansCounter').textContent = `${totalScans} shift records loaded`;
+}
+
+window.onload = () => {
+    fetchSupervisorData();
+};
+</script>
+{% endblock %}

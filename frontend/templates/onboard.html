@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}Rakshak (रक्षक) — Worker Onboarding Intake{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-plus text-blue-400"></i>
+                <span data-i18n="onboard_title">Worker Occupational Intake</span>
+            </h1>
+            <p class="text-xs text-slate-400" data-i18n="onboard_subtitle">Conversational baseline clinical and occupational profile registration</p>
+        </div>
+        <button onclick="startNewSession()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition flex items-center gap-2">
+            <i class="fa-solid fa-rotate-right"></i>
+            <span data-i18n="btn_restart_chat">New Session / रीसेट करें</span>
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Chat Area (2 cols) -->
+        <div class="lg:col-span-2 flex flex-col h-[600px] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <!-- Chat Header -->
+            <div class="bg-slate-800/80 px-4 py-3 border-b border-slate-700 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded-full bg-cyan-600 flex items-center justify-center text-white text-xs font-bold">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold text-white">Rakshak Intake Agent (रक्षक)</div>
+                        <div class="text-[10px] text-emerald-400 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Active Session
+                        </div>
+                    </div>
+                </div>
+                <div id="stepIndicator" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-900 border border-slate-700 text-cyan-400">
+                    Step: LANGUAGE
+                </div>
+            </div>
+
+            <!-- Messages Container -->
+            <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-4 text-sm">
+                <!-- Messages will be injected via JS -->
+            </div>
+
+            <!-- Quick Action Options -->
+            <div id="quickOptions" class="px-4 py-2 bg-slate-950/60 border-t border-slate-800 flex flex-wrap gap-2 hidden">
+                <!-- Dynamic Quick buttons -->
+            </div>
+
+            <!-- Chat Input Form -->
+            <form id="chatForm" onsubmit="handleChatSubmit(event)" class="p-3 bg-slate-800/90 border-t border-slate-700 flex gap-2">
+                <input 
+                    type="text" 
+                    id="chatInput" 
+                    placeholder="Type your response here / अपना उत्तर यहाँ लिखें..." 
+                    class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+                    required
+                >
+                <button type="submit" class="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow-md transition">
+                    <span>Send</span>
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Live Worker Profile Card (1 col) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+            <div>
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-id-card-clip text-cyan-400"></i>
+                    <span data-i18n="profile_preview_title">Live Profile Preview</span>
+                </h3>
+
+                <div class="space-y-3 text-xs">
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Worker ID:</span>
+                            <span id="previewWorkerId" class="font-mono font-bold text-cyan-400">EMP-Pending</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Name:</span>
+                            <span id="previewName" class="font-medium text-white">Pending</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Age:</span>
+                            <span id="previewAge" class="text-slate-300">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Unit:</span>
+                            <span id="previewUnit" class="text-emerald-400 font-semibold">CDU-1</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div class="font-semibold text-slate-300 border-b border-slate-800 pb-1">Health & Sensitivity Baseline</div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Smoking Status:</span>
+                            <span id="previewSmoking" class="text-slate-300">Pending</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Pre-existing:</span>
+                            <span id="previewConditions" class="text-slate-300">None reported</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Ocular Sensitivity:</span>
+                            <span id="previewOcular" class="text-slate-300">No</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                        <div class="font-semibold text-slate-300 border-b border-slate-800 pb-1">PPE & Respiratory Fit</div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Respirator:</span>
+                            <span id="previewRespirator" class="text-slate-300">Half-Mask</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Cartridge:</span>
+                            <span id="previewCartridge" class="text-slate-300">H2S Organic Vapor</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-400">Fit-Test:</span>
+                            <span id="previewFitTest" class="text-emerald-400 font-semibold">Valid</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="profileSavedAlert" class="mt-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 text-xs hidden">
+                <i class="fa-solid fa-circle-check mr-1.5"></i> Profile registered in PostgreSQL/SQLite database!
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentSessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
+
+function addBotMessage(text) {
+    const chatContainer = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'flex items-start gap-3';
+    msgDiv.innerHTML = `
+        <div class="w-7 h-7 rounded-full bg-cyan-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold mt-0.5">
+            <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 text-slate-100 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] leading-relaxed whitespace-pre-line">
+            ${text}
+        </div>
+    `;
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function addUserMessage(text) {
+    const chatContainer = document.getElementById('chatMessages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'flex items-start justify-end gap-3';
+    msgDiv.innerHTML = `
+        <div class="bg-cyan-600 text-white rounded-2xl rounded-tr-none p-3.5 max-w-[85%] leading-relaxed">
+            ${text}
+        </div>
+        <div class="w-7 h-7 rounded-full bg-slate-700 flex-shrink-0 flex items-center justify-center text-slate-300 text-xs font-bold mt-0.5">
+            <i class="fa-solid fa-user"></i>
+        </div>
+    `;
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function renderQuickOptions(step) {
+    const quickDiv = document.getElementById('quickOptions');
+    quickDiv.innerHTML = '';
+    
+    let buttons = [];
+    if (step === 'LANGUAGE') {
+        buttons = [
+            { text: '1. English', val: 'English' },
+            { text: '2. हिन्दी (Hindi)', val: 'हिन्दी' }
+        ];
+    } else if (step === 'RESPIRATORY_HEALTH') {
+        buttons = [
+            { text: 'No prior issues (कोई समस्या नहीं)', val: 'No respiratory issues or allergies' },
+            { text: 'Mild Asthma (हल्का अस्थमा)', val: 'History of mild asthma' },
+            { text: 'Ocular Sensitivity (आंखों में जलन)', val: 'Sensitive eyes, dry eyes' }
+        ];
+    } else if (step === 'SMOKING') {
+        buttons = [
+            { text: 'Non-Smoker (अधूम्रपानकर्ता)', val: 'Non-smoker' },
+            { text: 'Former Smoker (छोड़ दिया)', val: 'Former smoker, quit 2 years ago' },
+            { text: 'Active: ~5 cigs/day for 3 yrs', val: 'Active smoker, 5 cigarettes per day for 3 years' }
+        ];
+    } else if (step === 'PPE_DETAILS') {
+        buttons = [
+            { text: 'Half-Mask, Acid Gas, Fit-Test Passed', val: 'Half-Mask, Acid Gas cartridge, Fit-test passed recently' },
+            { text: 'Full-Face Mask, Passed', val: 'Full-Face respirator, Fit-test passed' }
+        ];
+    }
+
+    if (buttons.length > 0) {
+        quickDiv.classList.remove('hidden');
+        buttons.forEach(b => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-300 border border-slate-700 transition';
+            btn.textContent = b.text;
+            btn.onclick = () => {
+                document.getElementById('chatInput').value = b.val;
+                document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+            };
+            quickDiv.appendChild(btn);
+        });
+    } else {
+        quickDiv.classList.add('hidden');
+    }
+}
+
+async function sendChatMessage(userText) {
+    addUserMessage(userText);
+    document.getElementById('chatInput').value = '';
+
+    try {
+        const res = await fetch('/api/onboard/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: currentSessionId,
+                message: userText
+            })
+        });
+        const data = await res.json();
+        
+        addBotMessage(data.reply);
+        document.getElementById('stepIndicator').textContent = 'Step: ' + data.current_step;
+        renderQuickOptions(data.current_step);
+
+        if (data.worker_profile) {
+            const p = data.worker_profile;
+            document.getElementById('previewWorkerId').textContent = p.worker_id;
+            document.getElementById('previewName').textContent = p.full_name;
+            document.getElementById('previewAge').textContent = p.age + ' yrs';
+            document.getElementById('previewUnit').textContent = p.plant_unit;
+            document.getElementById('previewSmoking').textContent = p.health_profile.smoking_status;
+            document.getElementById('previewConditions').textContent = p.health_profile.pre_existing_conditions.join(', ') || 'None reported';
+            document.getElementById('previewOcular').textContent = p.health_profile.ocular_sensitivity ? 'Yes (Sensitive)' : 'No';
+            document.getElementById('previewRespirator').textContent = p.ppe_details.respirator_type;
+            document.getElementById('previewCartridge').textContent = p.ppe_details.cartridge_type;
+            document.getElementById('previewFitTest').textContent = p.ppe_details.fit_test_passed ? 'Valid / Passed' : 'Needs Test';
+            document.getElementById('profileSavedAlert').classList.remove('hidden');
+        }
+    } catch (err) {
+        addBotMessage('Error connecting to Rakshak onboarding agent. Please try again.');
+    }
+}
+
+function handleChatSubmit(e) {
+    e.preventDefault();
+    const text = document.getElementById('chatInput').value.trim();
+    if (text) {
+        sendChatMessage(text);
+    }
+}
+
+function startNewSession() {
+    currentSessionId = 'sess_' + Math.random().toString(36).substr(2, 9);
+    document.getElementById('chatMessages').innerHTML = '';
+    document.getElementById('profileSavedAlert').classList.add('hidden');
+    addBotMessage("Namaste! Welcome to **Rakshak (रक्षक)** — your H2S Occupational Safety Companion.\n\nPlease select your preferred language / अपनी पसंदीदा भाषा चुनें:\n1. English\n2. हिन्दी (Hindi)");
+    document.getElementById('stepIndicator').textContent = 'Step: LANGUAGE';
+    renderQuickOptions('LANGUAGE');
+}
+
+window.onload = () => {
+    startNewSession();
+};
+</script>
+{% endblock %}
