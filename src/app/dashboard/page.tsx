@@ -3,7 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { LogOut, Scan, Activity, Users, AlertTriangle, ShieldCheck, Clock } from "lucide-react";
+import { LogOut, Scan, Activity, Users, AlertTriangle, ShieldCheck, Clock, Settings } from "lucide-react";
 
 export default function DashboardPage() {
   const { role, userName, setRole } = useAuth();
