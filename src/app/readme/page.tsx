@@ -48,7 +48,7 @@ export default function ReadmePage() {
               <div className="w-10 h-10 rounded-full bg-cyan-900 text-cyan-400 flex items-center justify-center font-bold shrink-0">5</div>
               <div>
                 <h3 className="text-xl font-bold text-white mb-2">Continuous History</h3>
-                <p>The data is appended to the worker's permanent digital profile. Even when the band is retired and replaced, the worker's exposure history continues seamlessly.</p>
+                <p>The data is appended to the worker&apos;s permanent digital profile. Even when the band is retired and replaced, the worker&apos;s exposure history continues seamlessly.</p>
               </div>
             </div>
           </div>
