@@ -322,6 +322,8 @@ async def analyze_badge_photo(file: UploadFile = File(...)):
     """
     Analyzes an uploaded or camera-captured colorimetric dosimeter wristband photo:
     - Decodes image & evaluates lighting/glare quality scorecard
+    - Performs QR code decoding (Employee ID, Plant Unit, Badge Barcode)
+    - Validates Blue Dosimeter Strip Substrate (rejects human faces, walls, hands)
     - Performs CIELAB color space transformation
     - Segments Patch A (Active Spot ΔE & area), Patch B (Control Drift), and Patch C (Integrity)
     - Runs 3-layer MLP forward pass for exposure duration prediction
@@ -334,9 +336,6 @@ async def analyze_badge_photo(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Image file exceeds 15MB size limit")
         
     analysis = vision_scanner.analyze_badge_image(contents)
-    if not analysis.get("success", False):
-        raise HTTPException(status_code=422, detail=analysis.get("error", "Image analysis failed"))
-        
     return analysis
 
 @app.post("/api/scan/end-shift")

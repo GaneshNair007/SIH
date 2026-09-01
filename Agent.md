@@ -176,6 +176,16 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Files Modified/Created:** `backend/main.py`, `backend/database/models.py`, `backend/database/db.py`, `backend/engine/event_bus.py`, `backend/schemas/auth.py`, `backend/schemas/dosimetry.py`, `frontend/templates/login.html`, `frontend/templates/base.html`, `tests/test_demo_auth.py`, `tests/test_shift_lifecycle.py`, `Agent.md`.
 * **Tests:** 40/40 unit and integration tests passing (100%).
 
+### [2026-09-01] — Blue Dosimeter Strip Verification & QR Code Auto-Fill Pipeline
+* **Feature:** Feature 7: AI Optical Badge Scanner & Neural Network Pipeline
+* **Scope:**
+  1. **Blue Substrate Verification (`verify_blue_strip_substrate`):** Implemented strict chromaticity and HSV/RGB blue wristband substrate validation ($H \in [85, 140]$, $S \ge 35$, $V \ge 30$, blue fraction $\ge 4.5\%$). Rejects human faces, skin, background rooms, walls, or random objects with a clear user prompt: *"❌ No valid Rakshak dosimeter strip detected. Please align the blue wristband within the camera guide."*
+  2. **QR Code Employee Auto-Fill (`detect_qr_code` & `jsQR`):** Integrated both OpenCV backend `QRCodeDetector` and client-side `jsQR` real-time tracking in the live webcam stream. Automatically extracts `EMP-1042`, assigned unit `CDU-1`, and badge barcode `BAND-1042-01`, auto-populating form fields with zero latency.
+  3. **Interactive Viewfinder Feedback:** Real-time canvas tracking in `frontend/templates/scan.html` with dynamic alignment guide ring: glows red/amber `🔴 ALIGN BLUE WRISTBAND` when only face/room is in frame, and turns glowing emerald/cyan `🟢 BLUE STRIP DETECTED (READY)` when the blue wristband is aligned.
+  4. **Test Badge Generator Modal:** Added interactive **"🖨️ View / Test Sample Badge"** modal rendering a full blue wristband with QR code and reactive colorimetric spots for instant phone/screen webcam testing.
+* **Files Modified:** `backend/engine/vision_scanner.py`, `backend/main.py`, `frontend/templates/scan.html`, `requirements.txt`, `tests/test_vision_scanner.py`, `Agent.md`.
+* **Tests:** 42/42 unit and integration tests passing (100%).
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary
@@ -189,7 +199,7 @@ Every advisory itemizes actions strictly in ascending priority order:
 | `GET` | `/api/auth/me` | Current session / user info |
 | `POST` | `/api/auth/logout` | Session clear / logout |
 | `POST` | `/api/scan/start-shift` | Start-of-shift check-in & baseline optical logging |
-| `POST` | `/api/scan/analyze-image` | Optical photo analysis & neural network exposure prediction |
+| `POST` | `/api/scan/analyze-image` | Optical photo analysis, Blue Substrate verification, QR auto-fill & neural net |
 | `POST` | `/api/scan/end-shift` | End-of-shift differential dosimetry calculation & advisory |
 | `POST` | `/api/scan/submit` | Differential scan submission (backward-compatible) |
 | `GET` | `/api/realtime/stream` | Server-Sent Events (SSE) live control room feed |
@@ -204,4 +214,3 @@ Every advisory itemizes actions strictly in ascending priority order:
 | `POST` | `/api/screener/neuro-test` | Neuro-olfactory fatigue test endpoint |
 | `GET` | `/api/employees/{id}/lung-risk` | Chronic lung risk score breakdown |
 | `GET` | `/api/health` | System health check & Groq status |
-| `GET` | `/api/health` | System health check & Groq configuration status |
