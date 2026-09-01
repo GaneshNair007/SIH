@@ -210,6 +210,19 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Files Modified:** `frontend/templates/base.html`, `frontend/templates/index.html`, `frontend/static/css/style.css`, `Agent.md`.
 * **Tests:** 42/42 unit and integration tests passing (100%).
 
+### [2026-09-02] — Next.js App Router Frontend & Full Platform Build
+* **Feature:** Master Build: H₂S Wristband Website & Monitoring Platform (Next.js App Router)
+* **Scope:**
+  1. **Public Website (`/`):** Hero with `-15deg` yellow highlight on "VISIBLE", concept triple-patch cartridge illustration, "ONE BAND. A CONNECTED RECORD." project description, browser-style dashboard preview, honest team section, and golden-yellow final CTA.
+  2. **Working / Pipeline Page (`/working`):** Problem-solution 50/50 split ("THE RECORDING GAP" vs "THE CONNECTED WORKFLOW"), 3-column Bento layout, 4 deep-dive tabs (Flowchart with 8 stages, Captioned Images, SbCl₃ Chemistry with categorized research blocks, and Comparative Formulations), plus 1:2 How It Works step summary.
+  3. **Authentication & Session (`/login`):** 1-Click demo access for Hackathon reviewers (Shift Manager, HSE Officer, Field Technician) and standard credentials connected to FastAPI `rakshak_session` cookie auth.
+  4. **Manager Workspace & Scanner (`/manager`, `/manager/scan`):** Top-left optical band scanner with rear camera preference, torch toggle, real-time blue substrate detection (HSV), manual entry fallback, and image upload fallback. Dashboard KPIs, plant unit breakdown, and searchable worker roster.
+  5. **Worker Profile & History (`/workers/[workerId]`):** Recharts longitudinal exposure charts displaying low-high uncertainty bounds without fake precision, paired Start/End Shift check-in modals, 90-day trajectory, and docked Ask Rakshak AI assistant drawer with static protocol fallback.
+  6. **Control Room & Administration (`/control-room`, `/admin`):** 2D fugitive leak triangulation heatmap, OISD Form-A statutory incident reports with 1-click PDF download, and live SSE event stream.
+* **Documentation Created:** `docs/backend-audit.md`, `docs/api-reference.md`, `docs/source-decisions.md`.
+* **Files Created/Modified:** `frontend-next/` (complete Next.js 15 app), `docs/`, `Agent.md`.
+* **Build Verification:** `npm run build` compiled 10/10 routes with zero errors. Backend pytest suite passing 100%.
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary
