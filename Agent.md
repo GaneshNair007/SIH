@@ -129,6 +129,15 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Files Modified:** `backend/agents/unified_chat.py`, `frontend/templates/index.html`, `Agent.md`.
 * **Tests:** 24/24 unit and integration tests passing.
 
+### [2026-09-01] — Groq LLM API Integration & Live Model Alignment
+* **Feature:** Hybrid RAG & Zero-Hallucination LLM Structured Advisory
+* **Scope:**
+  1. Validated live Groq API key authentication and connection.
+  2. Configured active model `qwen/qwen3.8-27b` with `instructor` structured Pydantic schema validation (`DosimeterAdvisoryPayload`).
+  3. Added timeout (4.0s) and fast fallback to static protocol table in `backend/agents/advisory.py` for resilience.
+* **Files Modified:** `backend/config.py`, `backend/agents/advisory.py`, `.env.example`, `Agent.md`.
+* **Tests:** 24/24 unit and integration tests passing with live API calls.
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary

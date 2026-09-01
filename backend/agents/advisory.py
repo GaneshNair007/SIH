@@ -111,7 +111,8 @@ def generate_dosimeter_advisory(
             from groq import Groq
             import instructor
             
-            client = instructor.from_groq(Groq(api_key=settings.GROQ_API_KEY))
+            raw_groq = Groq(api_key=settings.GROQ_API_KEY, timeout=4.0, max_retries=1)
+            client = instructor.from_groq(raw_groq)
             advisory = client.chat.completions.create(
                 model=settings.GROQ_MODEL,
                 response_model=DosimeterAdvisoryPayload,
