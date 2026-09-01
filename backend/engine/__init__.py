@@ -6,6 +6,7 @@ from .statutory import (
     classify_statutory_tier_range
 )
 from .ledger import update_worker_exposure_ledger
+from .vision_scanner import VisionScanner, vision_scanner
 
 __all__ = [
     "get_kinetic_weather",
@@ -14,5 +15,7 @@ __all__ = [
     "evaluate_badge_integrity",
     "compute_differential_shift_dose",
     "classify_statutory_tier_range",
-    "update_worker_exposure_ledger"
+    "update_worker_exposure_ledger",
+    "VisionScanner",
+    "vision_scanner"
 ]

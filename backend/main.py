@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException, Query, Response
+from fastapi import FastAPI, Depends, HTTPException, Query, Response, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -29,6 +29,7 @@ from backend.engine.statutory import (
     evaluate_badge_integrity
 )
 from backend.engine.ledger import update_worker_exposure_ledger
+from backend.engine.vision_scanner import vision_scanner
 from backend.agents.onboarding import onboarding_manager
 from backend.agents.advisory import generate_dosimeter_advisory
 from backend.agents.unified_chat import unified_chat
@@ -383,6 +384,28 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
         "computed_metrics": metrics.model_dump(),
         "advisory": advisory.model_dump()
     }
+
+@app.post("/api/scan/analyze-image")
+async def analyze_badge_photo(file: UploadFile = File(...)):
+    """
+    Analyzes an uploaded or camera-captured colorimetric dosimeter wristband photo:
+    - Decodes image & evaluates lighting/glare quality scorecard
+    - Performs CIELAB color space transformation
+    - Segments Patch A (Active Spot ΔE & area), Patch B (Control Drift), and Patch C (Integrity)
+    - Runs 3-layer MLP forward pass for exposure duration prediction
+    """
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be an image (PNG, JPG, JPEG, WEBP)")
+    
+    contents = await file.read()
+    if len(contents) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image file exceeds 15MB size limit")
+        
+    analysis = vision_scanner.analyze_badge_image(contents)
+    if not analysis.get("success", False):
+        raise HTTPException(status_code=422, detail=analysis.get("error", "Image analysis failed"))
+        
+    return analysis
 
 @app.get("/api/supervisor/heatmap")
 def get_supervisor_heatmap(db: Session = Depends(get_db)):

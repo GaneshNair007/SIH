@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Rakshak (रक्षक) — Differential Shift Scan & Advisory Drawer{% endblock %}
+{% block title %}Rakshak (रक्षक) — AI Optical Badge Scanner & Triage Drawer{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
@@ -8,10 +8,10 @@
     <div class="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
             <h1 class="text-2xl font-bold text-white flex items-center gap-2">
-                <i class="fa-solid fa-qrcode text-emerald-400"></i>
-                <span>Differential Shift Scan & Triage Drawer</span>
+                <i class="fa-solid fa-camera-viewfinder text-cyan-400"></i>
+                <span>AI Optical Wristband Scanner & Triage Drawer</span>
             </h1>
-            <p class="text-xs text-slate-400">Differential optical evaluation (ΔE_end − ΔE_start), Patch B & C integrity, and uncertainty ranges</p>
+            <p class="text-xs text-slate-400">Computer Vision CIELAB color segmentation, 3-layer neural network exposure prediction, and differential dosimetry</p>
         </div>
         <a href="/manager" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
             <i class="fa-solid fa-user-tie text-amber-400"></i>
@@ -21,109 +21,143 @@
 
     <!-- Scan Form & Simulator Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <!-- Input & Calibration Simulator (5 cols) -->
+        <!-- AI Camera & Photo Analysis Panel (5 cols) -->
         <div class="lg:col-span-5 space-y-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+            <!-- Camera / Photo Scanner Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
                 <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                        <i class="fa-solid fa-sliders text-cyan-400"></i>
-                        <span>Shift Scan Parameters</span>
+                    <h2 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-camera text-cyan-400"></i>
+                        <span>Optical Strip Capture (AI Vision)</span>
                     </h2>
-                    <span class="text-[11px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">5-DAY BAND LIFECYCLE</span>
+                    <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">MLP NEURAL NET</span>
                 </div>
 
-                <form id="scanForm" onsubmit="handleScanSubmit(event)" class="space-y-4 text-xs">
-                    <!-- Worker ID -->
-                    <div>
-                        <label class="block text-slate-300 font-semibold mb-1">Worker ID / कर्मचारी आईडी</label>
-                        <input type="text" id="scanWorkerId" value="EMP-1042" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-500" required>
+                <!-- Capture Mode Tabs -->
+                <div class="flex rounded-xl bg-slate-950 p-1 border border-slate-800 text-xs">
+                    <button type="button" id="tabUploadBtn" onclick="switchCaptureMode('upload')" class="flex-1 py-1.5 rounded-lg font-semibold transition bg-cyan-600 text-white">
+                        <i class="fa-solid fa-cloud-arrow-up mr-1.5"></i>Upload Photo
+                    </button>
+                    <button type="button" id="tabCameraBtn" onclick="switchCaptureMode('camera')" class="flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white transition">
+                        <i class="fa-solid fa-video mr-1.5"></i>Live Camera
+                    </button>
+                </div>
+
+                <!-- 1. Photo Upload Dropzone -->
+                <div id="uploadSection" class="space-y-3">
+                    <div id="dropZone" onclick="document.getElementById('badgeFileInput').click()" class="border-2 border-dashed border-slate-700 hover:border-cyan-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-950/50 flex flex-col items-center justify-center min-h-[160px]">
+                        <input type="file" id="badgeFileInput" accept="image/*" class="hidden" onchange="handleImageFileSelect(event)">
+                        <div id="uploadPrompt" class="space-y-2">
+                            <i class="fa-solid fa-image text-3xl text-slate-500"></i>
+                            <div class="text-xs font-semibold text-slate-300">Click to upload or drag wristband photo</div>
+                            <div class="text-[10px] text-slate-500">PNG, JPG, WEBP (Auto-cropped to active patch)</div>
+                        </div>
+                        <img id="imagePreview" src="#" alt="Badge Preview" class="hidden max-h-36 rounded-xl object-contain shadow border border-slate-700">
+                    </div>
+                </div>
+
+                <!-- 2. Live Camera Viewfinder -->
+                <div id="cameraSection" class="hidden space-y-3">
+                    <div class="relative bg-black rounded-2xl overflow-hidden border border-slate-700 min-h-[180px] flex items-center justify-center">
+                        <video id="cameraVideo" autoplay playsinline class="w-full h-48 object-cover"></video>
+                        <!-- Alignment Guide Ring -->
+                        <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                            <div class="w-28 h-28 rounded-full border-2 border-dashed border-cyan-400/80 animate-pulse flex items-center justify-center">
+                                <span class="text-[9px] font-mono text-cyan-300 bg-slate-950/80 px-2 py-0.5 rounded">ALIGN BADGE SPOT</span>
+                            </div>
+                        </div>
+                        <canvas id="cameraCanvas" class="hidden"></canvas>
                     </div>
 
-                    <!-- Plant Unit & Lifecycle Day -->
+                    <div class="flex gap-2">
+                        <button type="button" id="startCamBtn" onclick="startCamera()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700 transition">
+                            <i class="fa-solid fa-play mr-1"></i>Start Camera
+                        </button>
+                        <button type="button" id="snapCamBtn" onclick="captureSnapshot()" class="flex-1 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-50" disabled>
+                            <i class="fa-solid fa-camera mr-1"></i>Snap & Analyze
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Real-time AI Quality & Optical Scorecard -->
+                <div id="aiScorecard" class="hidden p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2.5 text-xs">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="font-bold text-slate-200 flex items-center gap-1.5">
+                            <i class="fa-solid fa-microchip text-cyan-400"></i>
+                            <span>AI Optical Scorecard</span>
+                        </span>
+                        <span id="scorecardRatingBadge" class="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800">
+                            EXCELLENT
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <div class="text-slate-400 text-[10px]">Measured Spot ΔE</div>
+                            <div id="scDeltaE" class="font-mono font-bold text-cyan-400 text-sm">--</div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <div class="text-slate-400 text-[10px]">Spot Orange Area</div>
+                            <div id="scArea" class="font-mono font-bold text-white text-sm">--</div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <div class="text-slate-400 text-[10px]">Predicted Exposure</div>
+                            <div id="scPredictedDuration" class="font-mono font-bold text-amber-400 text-sm">--</div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <div class="text-slate-400 text-[10px]">Patch B Drift (Seal)</div>
+                            <div id="scPatchB" class="font-mono font-bold text-slate-200 text-sm">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual / Differential Parameters Form -->
+                <form id="scanForm" onsubmit="handleScanSubmit(event)" class="space-y-3.5 text-xs pt-2">
                     <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-300 font-semibold mb-1">Worker ID</label>
+                            <input type="text" id="scanWorkerId" value="EMP-1042" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-cyan-500" required>
+                        </div>
                         <div>
                             <label class="block text-slate-300 font-semibold mb-1">Refinery Unit</label>
                             <select id="scanUnit" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500">
-                                <option value="CDU-1">CDU-1 (Crude Distillation 1)</option>
-                                <option value="CDU-2">CDU-2 (Crude Distillation 2)</option>
-                                <option value="DHDS">DHDS (Diesel Hydrodesulf.)</option>
-                                <option value="SRU">SRU (Sulfur Recovery Unit)</option>
-                                <option value="Tank Farm">Sour Crude Tank Farm</option>
+                                <option value="CDU-1">CDU-1</option>
+                                <option value="CDU-2">CDU-2</option>
+                                <option value="DHDS">DHDS</option>
+                                <option value="SRU">SRU</option>
+                                <option value="Tank Farm">Tank Farm</option>
                                 <option value="Flare Header">Flare Header</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Band Day (1-5)</label>
-                            <select id="scanBandDay" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500">
-                                <option value="1">Day 1 (Fresh Wristband)</option>
-                                <option value="2">Day 2 (Active Band)</option>
-                                <option value="3">Day 3 (Active Band)</option>
-                                <option value="4">Day 4 (Approaching Rotation)</option>
-                                <option value="5">Day 5 (Final Shift Lifecycle)</option>
+                            <label class="block text-slate-400 text-[11px] mb-1">Start Optical (ΔE_start):</label>
+                            <input type="number" id="scanStartDeltaE" value="0.5" min="0.0" max="30.0" step="0.1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" required>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1">End Optical (ΔE_end):</label>
+                            <input type="number" id="scanEndDeltaE" value="4.2" min="0.0" max="30.0" step="0.1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" required>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1">Patch B Drift:</label>
+                            <input type="number" id="scanPatchB" value="0.10" min="0.0" max="2.0" step="0.05" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 text-[11px] mb-1">Patch C State:</label>
+                            <select id="scanPatchC" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
+                                <option value="NORMAL">NORMAL</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="COMPROMISED">COMPROMISED</option>
                             </select>
                         </div>
                     </div>
 
-                    <!-- Differential Readings: Start vs End Delta E -->
-                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                        <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
-                            <span>Differential Optical Density (ΔE)</span>
-                            <span class="text-[10px] text-cyan-400 font-mono">Irreversible Chemical Strip</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-slate-400 text-[11px] mb-1">Start of Shift (ΔE_start):</label>
-                                <input type="number" id="scanStartDeltaE" value="0.5" min="0.0" max="30.0" step="0.1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" required>
-                            </div>
-                            <div>
-                                <label class="block text-slate-400 text-[11px] mb-1">End of Shift (ΔE_end):</label>
-                                <input type="number" id="scanEndDeltaE" value="4.2" min="0.0" max="30.0" step="0.1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono" required>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Patch B & C Integrity Checks -->
-                    <div class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-                        <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
-                            <span>Control Patches & Seal Integrity</span>
-                            <span class="text-[10px] text-amber-400 font-mono">Tamper / Drift Ingestion</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-slate-400 text-[11px] mb-1">Patch B Drift (Reference):</label>
-                                <input type="number" id="scanPatchB" value="0.10" min="0.0" max="2.0" step="0.05" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
-                            </div>
-                            <div>
-                                <label class="block text-slate-400 text-[11px] mb-1">Patch C Condition:</label>
-                                <select id="scanPatchC" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono">
-                                    <option value="NORMAL">NORMAL (Intact Seal)</option>
-                                    <option value="WARNING">WARNING (Minor Degradation)</option>
-                                    <option value="COMPROMISED">COMPROMISED (Breached)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Quick Preset Scenarios -->
-                    <div class="pt-1">
-                        <label class="block text-slate-400 text-[11px] mb-1 font-semibold">Test Scenarios / त्वरित परिदृश्य:</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button type="button" onclick="setScenario(0.2, 1.4, 0.05, 'NORMAL', 'CDU-1')" class="p-2 rounded-lg bg-emerald-950/60 border border-emerald-800/80 hover:bg-emerald-900 text-emerald-300 text-center transition">
-                                <div class="font-bold text-[11px]">Normal (Tier 1)</div>
-                                <div class="text-[10px] text-slate-400">ΔE 0.2 &rarr; 1.4</div>
-                            </button>
-                            <button type="button" onclick="setScenario(1.0, 5.8, 0.15, 'NORMAL', 'DHDS')" class="p-2 rounded-lg bg-amber-950/60 border border-amber-800/80 hover:bg-amber-900 text-amber-300 text-center transition">
-                                <div class="font-bold text-[11px]">Caution (Tier 2)</div>
-                                <div class="text-[10px] text-slate-400">ΔE 1.0 &rarr; 5.8</div>
-                            </button>
-                            <button type="button" onclick="setScenario(1.2, 16.5, 0.20, 'NORMAL', 'SRU')" class="p-2 rounded-lg bg-rose-950/60 border border-rose-800/80 hover:bg-rose-900 text-rose-300 text-center transition">
-                                <div class="font-bold text-[11px]">Critical (Tier 3)</div>
-                                <div class="text-[10px] text-slate-400">ΔE 1.2 &rarr; 16.5</div>
-                            </button>
-                        </div>
-                    </div>
-
-                    <button type="submit" id="submitScanBtn" class="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2">
+                    <button type="submit" id="submitScanBtn" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2">
                         <i class="fa-solid fa-calculator"></i>
                         <span>Process Differential Scan & Open Triage Drawer</span>
                     </button>
@@ -134,9 +168,9 @@
         <!-- Post-Scan Interactive Triage Drawer (7 cols) -->
         <div class="lg:col-span-7 space-y-6">
             <div id="scanPlaceholder" class="bg-slate-900 border border-dashed border-slate-800 rounded-2xl p-12 text-center text-slate-500 flex flex-col items-center justify-center h-full min-h-[400px]">
-                <i class="fa-solid fa-microchip text-4xl mb-4 text-slate-700"></i>
+                <i class="fa-solid fa-camera text-4xl mb-4 text-slate-700"></i>
                 <h3 class="text-base font-semibold text-slate-400">Interactive Advisory & Triage Drawer</h3>
-                <p class="text-xs max-w-sm mt-1">Submit a shift scan to inspect the differential exposure range, badge integrity, and ascending-priority actions.</p>
+                <p class="text-xs max-w-sm mt-1">Snap or upload a wristband photo to automatically segment optical patches, compute exposure ranges, and open triage actions.</p>
             </div>
 
             <!-- Drawer Container -->
@@ -237,24 +271,141 @@
 
 {% block scripts %}
 <script>
-function setScenario(startE, endE, drift, cond, unit) {
-    document.getElementById('scanStartDeltaE').value = startE;
-    document.getElementById('scanEndDeltaE').value = endE;
-    document.getElementById('scanPatchB').value = drift;
-    document.getElementById('scanPatchC').value = cond;
-    document.getElementById('scanUnit').value = unit;
+let mediaStream = null;
+
+function switchCaptureMode(mode) {
+    const upBtn = document.getElementById('tabUploadBtn');
+    const camBtn = document.getElementById('tabCameraBtn');
+    const upSec = document.getElementById('uploadSection');
+    const camSec = document.getElementById('cameraSection');
+
+    if (mode === 'camera') {
+        camBtn.className = 'flex-1 py-1.5 rounded-lg font-semibold transition bg-cyan-600 text-white';
+        upBtn.className = 'flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white transition';
+        camSec.classList.remove('hidden');
+        upSec.classList.add('hidden');
+        startCamera();
+    } else {
+        upBtn.className = 'flex-1 py-1.5 rounded-lg font-semibold transition bg-cyan-600 text-white';
+        camBtn.className = 'flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white transition';
+        upSec.classList.remove('hidden');
+        camSec.classList.add('hidden');
+        stopCamera();
+    }
+}
+
+async function startCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        mediaStream = stream;
+        const video = document.getElementById('cameraVideo');
+        video.srcObject = stream;
+        document.getElementById('snapCamBtn').disabled = false;
+    } catch (err) {
+        alert('Camera permission denied or camera not found: ' + err.message);
+    }
+}
+
+function stopCamera() {
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(t => t.stop());
+        mediaStream = null;
+    }
+}
+
+async function captureSnapshot() {
+    const video = document.getElementById('cameraVideo');
+    const canvas = document.getElementById('cameraCanvas');
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(async (blob) => {
+        if (blob) {
+            await uploadAndAnalyzeImage(blob);
+        }
+    }, 'image/jpeg', 0.9);
+}
+
+function handleImageFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = document.getElementById('imagePreview');
+        img.src = event.target.result;
+        img.classList.remove('hidden');
+        document.getElementById('uploadPrompt').classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+
+    uploadAndAnalyzeImage(file);
+}
+
+async function uploadAndAnalyzeImage(blobOrFile) {
+    const formData = new FormData();
+    formData.append('file', blobOrFile, 'badge_scan.jpg');
+
+    const submitBtn = document.getElementById('submitScanBtn');
+    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Running Neural Network Optical Analysis...';
+    submitBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/scan/analyze-image', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+            // Display Scorecard
+            document.getElementById('aiScorecard').classList.remove('hidden');
+            document.getElementById('scDeltaE').textContent = data.delta_e;
+            document.getElementById('scArea').textContent = `${(data.orange_area_fraction * 100).toFixed(1)}%`;
+            document.getElementById('scPredictedDuration').textContent = data.predicted_exposure_human;
+            document.getElementById('scPatchB').textContent = data.patch_b_drift;
+
+            const ratingBadge = document.getElementById('scorecardRatingBadge');
+            const q = data.quality_scorecard;
+            ratingBadge.textContent = q.quality_rating;
+            if (q.quality_rating === 'EXCELLENT' || q.quality_rating === 'GOOD') {
+                ratingBadge.className = 'px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800';
+            } else {
+                ratingBadge.className = 'px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-amber-950 text-amber-400 border border-amber-800';
+            }
+
+            // Populate Form inputs
+            document.getElementById('scanEndDeltaE').value = data.delta_e;
+            document.getElementById('scanPatchB').value = data.patch_b_drift;
+            document.getElementById('scanPatchC').value = data.patch_c_condition;
+
+            // Automatically trigger differential submission
+            document.getElementById('scanForm').dispatchEvent(new Event('submit'));
+        } else {
+            alert('Optical Analysis: ' + (data.error || 'Could not analyze badge'));
+        }
+    } catch (err) {
+        alert('Image Upload Error: ' + err.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-calculator mr-1"></i> Process Differential Scan & Open Triage Drawer';
+    }
 }
 
 async function handleScanSubmit(e) {
     e.preventDefault();
     const btn = document.getElementById('submitScanBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing Differential Math...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Processing Differential Math...';
 
     const payload = {
         worker_id: document.getElementById('scanWorkerId').value.trim(),
         plant_unit: document.getElementById('scanUnit').value,
-        band_lifecycle_day: parseInt(document.getElementById('scanBandDay').value),
+        band_lifecycle_day: 1,
         start_delta_e: parseFloat(document.getElementById('scanStartDeltaE').value),
         end_delta_e: parseFloat(document.getElementById('scanEndDeltaE').value),
         patch_b_drift: parseFloat(document.getElementById('scanPatchB').value),
@@ -274,7 +425,7 @@ async function handleScanSubmit(e) {
         alert('Error processing scan: ' + err.message);
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-calculator"></i> Process Differential Scan & Open Triage Drawer';
+        btn.innerHTML = '<i class="fa-solid fa-calculator mr-1"></i> Process Differential Scan & Open Triage Drawer';
     }
 }
 

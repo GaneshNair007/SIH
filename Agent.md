@@ -97,6 +97,15 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Chronic Occupational Lung-Risk Score (`backend/intelligence/lung_risk.py`):** Multi-factor $0\text{--}100$ chronic respiratory risk index (`/lung-risk`).
 * **1-Click OISD Form-A PDF Dossier (`backend/intelligence/incident_report.py`):** Printable compliance incident report generator via ReportLab (`/api/supervisor/incident-pdf/{scan_id}`).
 
+### Feature 7: AI-Enabled Optical Badge Scanner & Neural Network Pipeline
+* **Engine:** `backend/engine/vision_scanner.py`, `scanner backend/h2s_strip_model.json`
+* **Description:** 
+  1. **CIELAB Color Space Transformation:** High-precision sRGB $\to$ linear RGB $\to$ CIE XYZ $\to$ CIELAB ($L^*a^*b^*$).
+  2. **Multi-Patch Segmentation:** Segments Patch A (Active Spot $\Delta E$ and orange area fraction), Patch B (Reference Blank Control drift $\Delta E_B$), and Patch C (Integrity Indicator condition).
+  3. **Photo Quality Scorecard:** Real-time analysis of brightness, glare %, contrast, and edge sharpness.
+  4. **3-Layer MLP Neural Network:** Pure Python/NumPy forward pass loader for `h2s_strip_model.json` (2 inputs $\to$ 12 ReLU $\to$ 6 ReLU $\to$ 1 Linear $\to 10^{\log_{10} s}$ predicted exposure duration) executing in $< 2\text{ ms}$.
+  5. **Touchpoints:** Live HTML5 Camera Viewfinder with target alignment guide and photo dropzone on `/manager/scan` (`/scan`) + In-chat photo scanner button in Rakshak Chatbot (`/`).
+
 ---
 
 ## 📜 Change Log & Audit Trail
@@ -138,6 +147,17 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Files Modified:** `backend/config.py`, `backend/agents/advisory.py`, `.env.example`, `Agent.md`.
 * **Tests:** 24/24 unit and integration tests passing with live API calls.
 
+### [2026-09-01] — AI-Enabled Optical Badge Scanner & Neural Network Integration
+* **Feature:** Feature 7: AI Optical Badge Scanner & Neural Network Pipeline
+* **Scope:**
+  1. Built `backend/engine/vision_scanner.py` with pure NumPy CIELAB color space transformation, multi-patch segmentation (Patch A spot $\Delta E$, Patch B drift, Patch C integrity), and photo quality grading.
+  2. Implemented zero-dependency forward pass for `scanner backend/h2s_strip_model.json` (3-layer MLP predicting exposure duration in $< 2\text{ ms}$).
+  3. Added `POST /api/scan/analyze-image` endpoint.
+  4. Added live HTML5 camera viewfinder, alignment overlay, dropzone, and AI optical scorecard to `/manager/scan`.
+  5. Added camera/photo upload button in Rakshak Chatbot (`/`).
+* **Files Created/Modified:** `backend/engine/vision_scanner.py`, `backend/engine/__init__.py`, `backend/main.py`, `frontend/templates/scan.html`, `frontend/templates/index.html`, `tests/test_vision_scanner.py`, `requirements.txt`, `Agent.md`.
+* **Tests:** 30/30 unit and integration tests passing.
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary
@@ -146,7 +166,8 @@ Every advisory itemizes actions strictly in ascending priority order:
 | :--- | :--- | :--- |
 | `GET` | `/` | Rakshak AI Safety Chatbot Interface |
 | `POST` | `/api/chat` | Unified multi-turn conversational chat endpoint |
-| `GET` | `/manager/scan` or `/scan` | Differential scan submission & interactive triage drawer |
+| `POST` | `/api/scan/analyze-image` | Optical photo analysis & neural network exposure prediction |
+| `GET` | `/manager/scan` or `/scan` | Differential scan submission, live camera viewfinder & triage drawer |
 | `POST` | `/api/scan/submit` | Differential scan processing with uncertainty range output |
 | `GET` | `/control-room/workers/{id}` | Worker profile insights & longitudinal history |
 | `GET` | `/api/control-room/workers/{id}` | JSON payload for worker profile & 90-day lung risk |
