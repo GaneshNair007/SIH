@@ -1,27 +1,200 @@
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-serif: 'Source Serif 4', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Space Grotesk', 'JetBrains Mono', monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ── Base ────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+html, body {
+  background-color: #F7F8F5;
+  color: #171C1B;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* ── Layout Utilities ────────────────────────── */
+
+.page-container {
+  @apply max-w-7xl mx-auto px-5 sm:px-8 lg:px-12;
+}
+
+.section-spacing {
+  @apply py-section;
+}
+
+.section-spacing-sm {
+  @apply py-section-sm;
+}
+
+/* ── Public Navigation ───────────────────────── */
+
+.public-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 50;
+  padding: 1rem 0;
+  background: rgba(247, 248, 245, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #DCE3DE;
+  transition: background-color 200ms, box-shadow 200ms;
+}
+
+.public-nav.scrolled {
+  background: rgba(247, 248, 245, 0.96);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+/* ── Buttons ─────────────────────────────────── */
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all duration-200;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+}
+
+.btn-primary {
+  @apply btn px-6 py-3 bg-teal text-white rounded-lg;
+  @apply hover:bg-teal-light focus-visible:ring-teal;
+}
+
+.btn-secondary {
+  @apply btn px-6 py-3 bg-canvas-white text-charcoal border border-border rounded-lg;
+  @apply hover:bg-canvas-subtle hover:border-border-strong focus-visible:ring-teal;
+}
+
+.btn-ghost {
+  @apply btn px-4 py-2 text-muted hover:text-charcoal hover:bg-canvas-subtle rounded-lg;
+  @apply focus-visible:ring-teal;
+}
+
+.btn-danger {
+  @apply btn px-6 py-3 bg-hazard-high text-white rounded-lg;
+  @apply hover:bg-hazard-critical focus-visible:ring-hazard-high;
+}
+
+/* ── Cards ───────────────────────────────────── */
+
+.card {
+  @apply bg-canvas-white border border-border rounded-card p-6 shadow-card;
+  @apply transition-shadow duration-200;
+}
+
+.card-hover {
+  @apply card hover:shadow-card-hover;
+}
+
+.card-elevated {
+  @apply bg-canvas-white border border-border rounded-card p-6 shadow-elevated;
+}
+
+/* ── Badge / Tags ────────────────────────────── */
+
+.badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 text-caption font-medium rounded-full;
+}
+
+.badge-safe { @apply badge bg-hazard-safeBg text-green-700; }
+.badge-elevated { @apply badge bg-hazard-elevatedBg text-amber-700; }
+.badge-high { @apply badge bg-hazard-highBg text-red-700; }
+.badge-critical { @apply badge bg-hazard-criticalBg text-red-800 font-bold; }
+.badge-neutral { @apply badge bg-canvas-subtle text-muted; }
+.badge-teal { @apply badge bg-teal-pale text-teal; }
+
+/* ── Tab Navigation ──────────────────────────── */
+
+.tab-nav {
+  @apply flex items-center gap-1 border-b border-border overflow-x-auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-nav::-webkit-scrollbar { display: none; }
+
+.tab-item {
+  @apply px-4 py-3 text-body-sm font-medium text-muted whitespace-nowrap;
+  @apply border-b-2 border-transparent transition-all duration-200;
+  @apply hover:text-charcoal hover:border-border-strong;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal focus-visible:ring-inset;
+}
+
+.tab-item[aria-selected="true"],
+.tab-item.active {
+  @apply text-teal border-teal;
+}
+
+/* ── Forms ────────────────────────────────────── */
+
+.input {
+  @apply w-full px-4 py-3 bg-canvas-white border border-border rounded-lg text-charcoal;
+  @apply placeholder:text-muted-light;
+  @apply focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal;
+  @apply transition-all duration-200;
+}
+
+.label {
+  @apply block text-body-sm font-medium text-charcoal mb-1.5;
+}
+
+/* ── Status Dot ──────────────────────────────── */
+
+.status-dot {
+  @apply w-2 h-2 rounded-full inline-block;
+}
+.status-dot-safe { @apply status-dot bg-hazard-safe; }
+.status-dot-elevated { @apply status-dot bg-hazard-elevated; }
+.status-dot-high { @apply status-dot bg-hazard-high; }
+.status-dot-critical { @apply status-dot bg-hazard-critical animate-pulse; }
+
+/* ── Data Table ──────────────────────────────── */
+
+.data-table {
+  @apply w-full text-body-sm;
+}
+.data-table thead { @apply border-b border-border; }
+.data-table th {
+  @apply px-4 py-3 text-left text-caption font-semibold text-muted uppercase tracking-wider;
+}
+.data-table td {
+  @apply px-4 py-3 border-b border-border/50;
+}
+.data-table tbody tr {
+  @apply hover:bg-canvas-subtle/50 transition-colors;
+}
+
+/* ── Sidebar ─────────────────────────────────── */
+
+.sidebar {
+  @apply fixed left-0 top-0 h-screen w-64 bg-canvas-white border-r border-border;
+  @apply flex flex-col z-40;
+}
+
+.sidebar-item {
+  @apply flex items-center gap-3 px-4 py-2.5 text-body-sm text-muted rounded-lg mx-2;
+  @apply hover:text-charcoal hover:bg-canvas-subtle transition-colors;
+}
+
+.sidebar-item.active {
+  @apply text-teal bg-teal-pale font-medium;
 }

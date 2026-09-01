@@ -15,7 +15,7 @@ CREATE TABLE users (
   company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('SHIFT_MANAGER', 'CONTROL_ROOM_MANAGER', 'WORKER', 'ADMIN')),
+  role TEXT NOT NULL CHECK (role IN ('SHIFT_MANAGER', 'CONTROL_ROOM_MANAGER', 'ADMIN')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -41,6 +41,7 @@ CREATE TABLE workers (
 );
 
 CREATE INDEX idx_workers_company ON workers(company_id);
+CREATE UNIQUE INDEX idx_workers_company_code ON workers(company_id, worker_code);
 
 -- 4. bands
 CREATE TABLE bands (
@@ -88,6 +89,8 @@ CREATE TABLE shifts (
 
 CREATE INDEX idx_shifts_company ON shifts(company_id);
 CREATE INDEX idx_shifts_worker ON shifts(worker_id);
+CREATE UNIQUE INDEX idx_one_active_shift_per_worker ON shifts(worker_id) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX idx_one_active_shift_per_band ON shifts(band_id) WHERE status = 'ACTIVE';
 
 -- 6. readings
 CREATE TABLE readings (
@@ -170,6 +173,7 @@ CREATE TABLE alerts (
 
 CREATE INDEX idx_alerts_company ON alerts(company_id);
 CREATE INDEX idx_alerts_worker ON alerts(worker_id);
+CREATE INDEX idx_alerts_open_company ON alerts(company_id, created_at DESC) WHERE status = 'OPEN';
 
 -- 9. calibration_versions
 CREATE TABLE calibration_versions (
@@ -205,7 +209,7 @@ CREATE INDEX idx_cal_points_version ON calibration_points(calibration_version_id
 -------------------------------------------------------
 -- RPC FUNCTIONS
 -------------------------------------------------------
-CREATE OR REPLACE FUNCTION get_manager_stats(company_id UUID)
+CREATE OR REPLACE FUNCTION get_manager_stats(target_company_id UUID)
 RETURNS TABLE (
   active_workers INTEGER,
   active_bands INTEGER,
@@ -216,11 +220,11 @@ RETURNS TABLE (
 BEGIN
   RETURN QUERY
   SELECT
-    (SELECT COUNT(*)::INTEGER FROM workers WHERE workers.company_id = $1 AND workers.status = 'ACTIVE') as active_workers,
-    (SELECT COUNT(*)::INTEGER FROM bands WHERE bands.company_id = $1 AND bands.status = 'ACTIVE') as active_bands,
-    (SELECT COUNT(*)::INTEGER FROM shifts WHERE shifts.company_id = $1 AND shifts.status = 'ACTIVE') as active_shifts,
-    (SELECT COUNT(*)::INTEGER FROM readings WHERE readings.company_id = $1 AND readings.work_date = CURRENT_DATE) as readings_today,
-    (SELECT COUNT(*)::INTEGER FROM alerts WHERE alerts.company_id = $1 AND alerts.status = 'OPEN') as open_alerts;
+    (SELECT COUNT(*)::INTEGER FROM workers WHERE workers.company_id = target_company_id AND workers.status = 'ACTIVE') as active_workers,
+    (SELECT COUNT(*)::INTEGER FROM bands WHERE bands.company_id = target_company_id AND bands.status IN ('ACTIVE', 'WARNING')) as active_bands,
+    (SELECT COUNT(*)::INTEGER FROM shifts WHERE shifts.company_id = target_company_id AND shifts.status = 'ACTIVE') as active_shifts,
+    (SELECT COUNT(*)::INTEGER FROM readings WHERE readings.company_id = target_company_id AND readings.work_date = CURRENT_DATE) as readings_today,
+    (SELECT COUNT(*)::INTEGER FROM alerts WHERE alerts.company_id = target_company_id AND alerts.status = 'OPEN') as open_alerts;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -265,47 +269,80 @@ ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE calibration_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE calibration_points ENABLE ROW LEVEL SECURITY;
 
--- Helper function to get current user's company_id (cached via Select to avoid per-row execution)
-CREATE OR REPLACE FUNCTION get_auth_company_id()
+CREATE SCHEMA IF NOT EXISTS private;
+
+-- Internal helpers are outside the exposed schema and callable only by authenticated users.
+CREATE OR REPLACE FUNCTION private.get_auth_company_id()
 RETURNS UUID
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT company_id FROM public.users WHERE id = (SELECT auth.uid());
+  SELECT company_id FROM public.users WHERE id = (SELECT auth.uid()) AND (SELECT auth.uid()) IS NOT NULL;
 $$;
+
+CREATE OR REPLACE FUNCTION private.get_auth_role()
+RETURNS TEXT
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT role FROM public.users WHERE id = (SELECT auth.uid()) AND (SELECT auth.uid()) IS NOT NULL;
+$$;
+
+REVOKE ALL ON SCHEMA private FROM PUBLIC, anon;
+GRANT USAGE ON SCHEMA private TO authenticated;
+REVOKE EXECUTE ON FUNCTION private.get_auth_company_id() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION private.get_auth_role() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION private.get_auth_company_id() TO authenticated;
+GRANT EXECUTE ON FUNCTION private.get_auth_role() TO authenticated;
+
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+GRANT SELECT ON companies, users, workers, bands, shifts, readings, exposure_daily, alerts, calibration_versions, calibration_points TO authenticated;
+GRANT UPDATE(name) ON users TO authenticated;
+GRANT INSERT, UPDATE ON workers, bands, shifts, readings, exposure_daily, alerts TO authenticated;
 
 -- Users can read their own company
 CREATE POLICY "Users can read own company" ON companies
-  FOR SELECT USING (id = (SELECT get_auth_company_id()));
+  FOR SELECT TO authenticated USING (id = (SELECT private.get_auth_company_id()));
 
 -- Users can read profiles in their company
 CREATE POLICY "Users can read co-workers" ON users
-  FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
+  FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
 CREATE POLICY "Users can update own profile" ON users
-  FOR UPDATE USING (id = (SELECT auth.uid()));
+  FOR UPDATE TO authenticated
+  USING (id = (SELECT auth.uid()))
+  WITH CHECK (id = (SELECT auth.uid()) AND company_id = (SELECT private.get_auth_company_id()));
 
 -- All tables: Users can select/insert/update within their own company
 -- For a production app, we would restrict INSERT/UPDATE to Managers only, but this provides baseline isolation
-CREATE POLICY "Company isolation select workers" ON workers FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation insert workers" ON workers FOR INSERT WITH CHECK (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation update workers" ON workers FOR UPDATE USING (company_id = (SELECT get_auth_company_id()));
+CREATE POLICY "Company isolation select workers" ON workers FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Managers insert workers" ON workers FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
+CREATE POLICY "Managers update workers" ON workers FOR UPDATE TO authenticated USING (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN')) WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
 
-CREATE POLICY "Company isolation select bands" ON bands FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation insert bands" ON bands FOR INSERT WITH CHECK (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation update bands" ON bands FOR UPDATE USING (company_id = (SELECT get_auth_company_id()));
+CREATE POLICY "Company isolation select bands" ON bands FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Managers insert bands" ON bands FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
+CREATE POLICY "Managers update bands" ON bands FOR UPDATE TO authenticated USING (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN')) WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
 
-CREATE POLICY "Company isolation select shifts" ON shifts FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation insert shifts" ON shifts FOR INSERT WITH CHECK (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation update shifts" ON shifts FOR UPDATE USING (company_id = (SELECT get_auth_company_id()));
+CREATE POLICY "Company isolation select shifts" ON shifts FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Managers insert shifts" ON shifts FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
+CREATE POLICY "Managers update shifts" ON shifts FOR UPDATE TO authenticated USING (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN')) WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
 
-CREATE POLICY "Company isolation select readings" ON readings FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation insert readings" ON readings FOR INSERT WITH CHECK (company_id = (SELECT get_auth_company_id()));
+CREATE POLICY "Company isolation select readings" ON readings FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Managers insert readings" ON readings FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
 
-CREATE POLICY "Company isolation select exposure_daily" ON exposure_daily FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation insert exposure_daily" ON exposure_daily FOR INSERT WITH CHECK (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation update exposure_daily" ON exposure_daily FOR UPDATE USING (company_id = (SELECT get_auth_company_id()));
+CREATE POLICY "Company isolation select exposure_daily" ON exposure_daily FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Managers insert exposure_daily" ON exposure_daily FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
+CREATE POLICY "Managers update exposure_daily" ON exposure_daily FOR UPDATE TO authenticated USING (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN')) WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
 
-CREATE POLICY "Company isolation select alerts" ON alerts FOR SELECT USING (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation insert alerts" ON alerts FOR INSERT WITH CHECK (company_id = (SELECT get_auth_company_id()));
-CREATE POLICY "Company isolation update alerts" ON alerts FOR UPDATE USING (company_id = (SELECT get_auth_company_id()));
+CREATE POLICY "Company isolation select alerts" ON alerts FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Managers insert alerts" ON alerts FOR INSERT TO authenticated WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'ADMIN'));
+CREATE POLICY "Staff update alerts" ON alerts FOR UPDATE TO authenticated USING (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'CONTROL_ROOM_MANAGER', 'ADMIN')) WITH CHECK (company_id = (SELECT private.get_auth_company_id()) AND (SELECT private.get_auth_role()) IN ('SHIFT_MANAGER', 'CONTROL_ROOM_MANAGER', 'ADMIN'));
+
+CREATE POLICY "Company isolation select calibration versions" ON calibration_versions FOR SELECT TO authenticated USING (company_id = (SELECT private.get_auth_company_id()));
+CREATE POLICY "Company isolation select calibration points" ON calibration_points FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM calibration_versions cv WHERE cv.id = calibration_points.calibration_version_id AND cv.company_id = (SELECT private.get_auth_company_id())));
+
+REVOKE EXECUTE ON FUNCTION get_manager_stats(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION get_worker_exposure(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION get_manager_stats(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_worker_exposure(UUID) TO authenticated;
