@@ -120,6 +120,15 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Git:** Pushed to `origin/backend` (Commit `2e7d578`).
 * **Tests:** 24/24 unit and integration tests passing.
 
+### [2026-09-01] — Conversational Tone Refactor & Math Jargon Elimination
+* **Feature:** Feature 1: AI Advisory Chatbot (Rakshak / रक्षक)
+* **Scope:** 
+  1. Eliminated technical engine mechanics and mathematical formulas (e.g. "using differential scan evaluation (Start vs End ΔE), uncertainty dose ranges, and Patch B/C integrity tracking") from chat dialogue.
+  2. Replaced with natural, warm, empathetic safety advice focused on worker health, symptom checks, hydration, and immediate first-aid.
+  3. Moved technical statistics and range numbers strictly to the structured UI badge cards rather than text lectures.
+* **Files Modified:** `backend/agents/unified_chat.py`, `frontend/templates/index.html`, `Agent.md`.
+* **Tests:** 24/24 unit and integration tests passing.
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary

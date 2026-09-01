@@ -210,13 +210,13 @@ function handleUnifiedChatSubmit(e) {
 function resetChat() {
     currentSession = 'worker_sess_' + Math.random().toString(36).substr(2, 9);
     document.getElementById('chatStream').innerHTML = '';
-    addBotMessage("Namaste! I am **Rakshak (रक्षक)** — your H₂S Occupational Safety AI Assistant.\n\nYou can log your shift dosimeter badge, check your cumulative exposure load, run a 30-second olfactory smell screener, or ask about OISD safety protocols.\n\n*Type your query or tap a quick action below:*");
+    addBotMessage("Namaste Rajesh! I am **Rakshak (रक्षक)**, your plant safety companion.\n\nHow was your shift today? You can share your badge reading, check your exposure status, or let me know if you are feeling any symptoms.\n\n*Type your message or select an option below:*");
     setQuickChips([
-        "Log Badge Scan (ΔE 4.2)",
-        "Check My Exposure Load",
+        "Log Badge Reading (4.2)",
+        "My Exposure Status",
         "Olfactory Smell Test",
         "Switch to हिन्दी",
-        "OISD Work Permit Rules"
+        "Safety Guidelines (PPE)"
     ]);
 }
 
