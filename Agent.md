@@ -151,11 +151,18 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Feature:** Feature 7: AI Optical Badge Scanner & Neural Network Pipeline
 * **Scope:**
   1. Built `backend/engine/vision_scanner.py` with pure NumPy CIELAB color space transformation, multi-patch segmentation (Patch A spot $\Delta E$, Patch B drift, Patch C integrity), and photo quality grading.
-  2. Implemented zero-dependency forward pass for `scanner backend/h2s_strip_model.json` (3-layer MLP predicting exposure duration in $< 2\text{ ms}$).
+  2. Implemented zero-dependency forward pass for `backend/engine/h2s_strip_model.json` (3-layer MLP predicting exposure duration in $< 2\text{ ms}$).
   3. Added `POST /api/scan/analyze-image` endpoint.
   4. Added live HTML5 camera viewfinder, alignment overlay, dropzone, and AI optical scorecard to `/manager/scan`.
   5. Added camera/photo upload button in Rakshak Chatbot (`/`).
 * **Files Created/Modified:** `backend/engine/vision_scanner.py`, `backend/engine/__init__.py`, `backend/main.py`, `frontend/templates/scan.html`, `frontend/templates/index.html`, `tests/test_vision_scanner.py`, `requirements.txt`, `Agent.md`.
+* **Tests:** 30/30 unit and integration tests passing.
+
+### [2026-09-01] — Codebase Cleanup & Obsolete Artifact Removal
+* **Scope:**
+  1. Consolidated production neural network weights to `backend/engine/h2s_strip_model.json`.
+  2. Removed legacy training folder `scanner backend/` (synthetic dataset generator, CSV data, training scripts).
+  3. Removed legacy unused frontend artifacts (`src/`, `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.mjs`, `postcss.config.mjs`, `tailwind.config.ts`, `.eslintrc.json`, `AGENT_BUILD_SPEC.md`).
 * **Tests:** 30/30 unit and integration tests passing.
 
 ---

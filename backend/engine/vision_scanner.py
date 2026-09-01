@@ -14,9 +14,9 @@ class VisionScanner:
     """
     def __init__(self, model_path: Optional[str] = None):
         if model_path is None:
-            # Default to scanner backend/h2s_strip_model.json
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            model_path = os.path.join(base_dir, "scanner backend", "h2s_strip_model.json")
+            # Default to backend/engine/h2s_strip_model.json
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_dir, "h2s_strip_model.json")
         
         self.model_path = model_path
         self.model_loaded = False
