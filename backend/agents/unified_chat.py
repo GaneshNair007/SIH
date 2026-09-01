@@ -1,12 +1,13 @@
 import re
 import json
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, Optional, List
 from sqlalchemy.orm import Session
 
 from backend.config import settings
-from backend.database.models import WorkerModel, ExposureLedgerModel, ShiftScanModel
+from backend.database.models import EmployeeModel, WorkerModel, ExposureLedgerModel, ShiftScanModel
 from backend.schemas.worker import WorkerProfile, HealthProfile, PPEDetails, ExposureLedger
 from backend.schemas.dosimetry import (
     ShiftScanPayload, BadgeData, ContextualEnvironmentalTelemetry, ComputedMetrics,
@@ -23,29 +24,57 @@ from backend.agents.advisory import generate_dosimeter_advisory
 from backend.rag.retriever import retriever
 from backend.intelligence.lung_risk import calculate_chronic_lung_risk_score
 
+logger = logging.getLogger(__name__)
+
+CHAT_SYSTEM_PROMPT = """
+You are Rakshak (रक्षक), an empathetic, expert AI Occupational Health and Safety Companion for refinery workers at MRPL Mangalore.
+Your mission is to protect workers from toxic Hydrogen Sulfide (H2S) exposure, fatigue, and occupational hazards.
+
+KEY BEHAVIORS:
+1. Natural, warm, empathetic, conversational tone. Speak directly to the worker like a caring safety mentor.
+2. When a worker mentions symptoms (e.g., feeling sleepy, drowsy, dizzy, eye stinging, throat irritation, sudden loss of smell, headache):
+   - Recognize that in sour operating units (CDU-1, DHDS, SRU, Tank Farm), drowsiness/fatigue or eye irritation can be early warning signs of H2S exposure or oxygen deficiency!
+   - Give immediate, clear, numbered safety steps:
+     1. Stop hot work / equipment inspection immediately.
+     2. Move upwind to a well-ventilated fresh air area or positive-pressure control room.
+     3. Inform your shift buddy or supervisor.
+     4. Rest, hydrate with clean water, and report to the Occupational Health Centre (OHC) if symptoms persist.
+3. NEVER dump raw unformatted regulatory excerpts or legal clauses.
+4. Keep answers concise, clear, and easy to read on mobile screens (bullet points or numbered steps).
+5. If the user speaks in Hindi or requests Hindi, reply in natural, fluent Hindi (Devanagari script).
+"""
+
 class UnifiedChatAgent:
     """
-    Unified Conversational Agent for Rakshak (रक्षक).
-    Acts as a natural, helpful, human-like safety advisor for refinery workers.
-    Focuses on worker well-being, triage, first-aid, and actionable safety
-    without lecturing on mathematical formulas or internal engine mechanics.
+    Unified Conversational AI Agent for Rakshak (रक्षक).
+    Integrates Groq LLM (qwen/qwen3.8-27b), contextual RAG, and deterministic shift dosimetry.
     """
     def __init__(self):
         self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.groq_client = None
+        self._init_groq()
+
+    def _init_groq(self):
+        if settings.GROQ_API_KEY:
+            try:
+                from groq import Groq
+                self.groq_client = Groq(api_key=settings.GROQ_API_KEY, timeout=6.0, max_retries=1)
+            except Exception as e:
+                logger.warning(f"Could not initialize Groq client: {e}")
 
     def get_session(self, session_id: str) -> Dict[str, Any]:
         if session_id not in self.sessions:
             self.sessions[session_id] = {
                 "worker_id": "EMP-1042",
                 "lang": "en",
-                "state": "IDLE"
+                "history": []
             }
         return self.sessions[session_id]
 
     def process_message(self, session_id: str, message: str, db: Session) -> Dict[str, Any]:
         session = self.get_session(session_id)
         msg_clean = message.strip().lower()
-        lang = session["lang"]
+        lang = session.get("lang", "en")
         
         # 1. Language Toggle Commands
         if any(w in msg_clean for w in ["hindi", "हिन्दी", "हिंदी"]) or msg_clean == "2":
@@ -61,29 +90,132 @@ class UnifiedChatAgent:
                 "quick_actions": ["Log Badge Reading", "My Exposure Status", "Olfactory Smell Test", "PPE Guidelines"]
             }
 
-        # 2. Shift Badge Scan / Reading Input
-        if any(k in msg_clean for k in ["scan", "badge", "delta e", "reading", "shift end", "shift ended", "बैज", "स्कैन", "रीडिंग"]):
-            return self._handle_scan_submission(session, message, db, lang)
+        # 2. Shift Badge Scan / Reading Input (e.g. "Shift ended start 0.5 end 4.2")
+        if any(k in msg_clean for k in ["start reading", "end reading", "delta e", "reading", "shift end", "shift ended", "बैज रीडिंग", "स्कैन दर्ज"]):
+            if any(char.isdigit() for char in message):
+                return self._handle_scan_submission(session, message, db, lang)
 
-        # 3. Exposure Status Query
-        if any(k in msg_clean for k in ["exposure", "load", "history", "7 day", "90 day", "status", "एक्सपोजर", "लोड", "स्थिति", "इतिहास"]):
+        # 3. Direct Exposure Status Query
+        if msg_clean in ["my exposure status", "exposure status", "मेरा एक्सपोजर स्टेटस", "status"]:
             return self._handle_exposure_query(session, db, lang)
 
-        # 4. Olfactory Fatigue / Smell Test
-        if any(k in msg_clean for k in ["screener", "smell", "olfactory", "reflex", "थकान", "गंध", "सूंघने"]):
+        # 4. Olfactory Fatigue / Smell Test Trigger
+        if msg_clean in ["olfactory smell test", "smell test", "screener", "गंध थकान जांच", "सूंघने की जांच"]:
             return self._handle_screener_query(session, lang)
 
         # 5. Chronic Lung Risk Query
-        if any(k in msg_clean for k in ["lung", "chronic", "asthma", "risk score", "फेफड़े", "जोखिम"]):
+        if msg_clean in ["lung risk", "chronic lung risk", "फेफड़े जोखिम"]:
             return self._handle_lung_risk_query(session, db, lang)
 
-        # 6. General Safety Q&A / RAG Consultation
-        return self._handle_general_safety_query(message, session, lang)
+        # 6. General Safety Q&A, Symptom Triage & Conversation via Groq LLM
+        return self._handle_llm_safety_query(message, session, lang)
+
+    def _handle_llm_safety_query(self, message: str, session: Dict[str, Any], lang: str) -> Dict[str, Any]:
+        """
+        Uses Groq LLM (qwen/qwen3.8-27b) with RAG context to provide empathetic,
+        accurate, natural safety advice and symptom triage.
+        """
+        worker_id = session.get("worker_id", "EMP-1042")
+        
+        # 1. Retrieve supporting RAG context
+        chunks, conf = retriever.query(message, top_k=2)
+        rag_text = ""
+        if chunks:
+            rag_text = "\n\n".join([f"[{c['title']}]: {c['content']}" for c in chunks])
+
+        # 2. Call Groq LLM if configured
+        if not self.groq_client and settings.GROQ_API_KEY:
+            self._init_groq()
+
+        if self.groq_client:
+            try:
+                lang_instruction = "Respond in Hindi (Devanagari script)." if lang == "hi" else "Respond in English."
+                prompt_content = f"""
+Language Instruction: {lang_instruction}
+Worker Context: Active Worker {worker_id} in Refinery Operating Unit (CDU-1 / Sour Gas Area).
+
+Worker Query: "{message}"
+
+Retrieved Regulatory Safety Reference:
+{rag_text}
+
+Provide an empathetic, clear, structured response with immediate first-aid / action steps if the worker describes any symptoms (e.g. sleepiness, fatigue, eye stinging, smell loss, coughing). Do NOT dump raw regulatory text.
+"""
+                response = self.groq_client.chat.completions.create(
+                    model=settings.GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt_content}
+                    ],
+                    temperature=0.3,
+                    max_tokens=450
+                )
+                ai_reply = response.choices[0].message.content.strip()
+                return {
+                    "reply": ai_reply,
+                    "quick_actions": ["Log Badge Reading", "My Exposure Status", "Olfactory Smell Test", "PPE Guidelines"]
+                }
+            except Exception as e:
+                logger.warning(f"Groq Chat LLM call failed: {e}. Using smart conversational fallback.")
+
+        # 3. Smart Conversational Fallback (if Groq is offline)
+        msg_l = message.lower()
+        if any(s in msg_l for s in ["sleep", "sleepy", "drowsy", "tired", "fatigue", "नींद", "थकान", "सुस्ती"]):
+            if lang == "hi":
+                reply = (
+                    "⚠️ **महत्वपूर्ण सुरक्षा चेतावनी (नींद व सुस्ती):**\n\n"
+                    "रिफाइनरी यूनिट (CDU-1 / DHDS) में काम करते समय अचानक अत्यधिक नींद या सुस्ती आना **H2S गैस के शुरुआती प्रभाव या ऑक्सीजन की कमी** का संकेत हो सकता है!\n\n"
+                    "**कृपया तुरंत ये कदम उठाएं:**\n"
+                    "1. 🛑 काम तुरंत रोकें और किसी ताजी हवा वाले खुले क्षेत्र या कंट्रोल रूम शेल्टर में जाएं।\n"
+                    "2. 👥 अपने साथी (Buddy) या शिफ्ट सुपरवाइजर को तुरंत सूचित करें।\n"
+                    "3. 💧 साफ पानी पिएं और 10-15 मिनट आराम करें।\n"
+                    "4. 🏥 यदि सिर भारी लगे या चक्कर आए, तो तुरंत ऑक्यूपेशनल हेल्थ सेंटर (OHC) में जांच कराएं।"
+                )
+            else:
+                reply = (
+                    "⚠️ **Safety Alert: Drowsiness in Operating Units**\n\n"
+                    "Feeling unusually sleepy, fatigued, or drowsy in a sour processing area (like CDU-1) can be an early symptom of **low-level H2S exposure or reduced oxygen levels**.\n\n"
+                    "**Immediate Recommended Steps:**\n"
+                    "1. 🛑 **Stop work immediately** and step away to an upwind, well-ventilated fresh air zone or positive-pressure control shelter.\n"
+                    "2. 👥 **Notify your shift buddy or supervisor** right away so they are aware of your location.\n"
+                    "3. 💧 **Hydrate** with clean water and take a 10–15 minute break.\n"
+                    "4. 🏥 **Visit OHC:** If you feel disoriented, have a headache, or dizziness, report to the Occupational Health Centre for a quick check."
+                )
+        elif any(s in msg_l for s in ["eye", "sting", "burn", "आंख", "जलन", "पानी"]):
+            if lang == "hi":
+                reply = (
+                    "👁️ **आंखों में जलन के लिए प्राथमिक उपचार:**\n\n"
+                    "1. तुरंत निकटतम **आई-वॉश स्टेशन (Eye Wash Station)** पर जाएं।\n"
+                    "2. अपनी आंखों को कम से कम **15 मिनट** तक साफ बहते पानी से धोएं।\n"
+                    "3. आंखों को रगड़ें नहीं। तुरंत ताजी हवा में आएं और OHC को सूचित करें।"
+                )
+            else:
+                reply = (
+                    "👁️ **Eye Irritation First-Aid:**\n\n"
+                    "1. 🚿 Immediately move to the nearest **Emergency Eye Wash Station**.\n"
+                    "2. 💧 Flush your open eyes gently with clean water for at least **15 minutes**.\n"
+                    "3. ❌ Do not rub your eyes. Move upwind and report to OHC if stinging continues."
+                )
+        else:
+            if lang == "hi":
+                reply = (
+                    "नमस्ते! मैं **रक्षक (Rakshak)** हूँ — आपका रिफाइनरी सुरक्षा साथी।\n\n"
+                    "मैं आपकी शिफ्ट का डोसीमीटर बैज दर्ज करने, लक्षणों की जांच करने और H2S सुरक्षा नियमों में मदद करने के लिए यहाँ हूँ। कृपया बताएं कि आप कैसा महसूस कर रहे हैं।"
+                )
+            else:
+                reply = (
+                    "Hello! I am **Rakshak (रक्षक)**, your plant safety companion.\n\n"
+                    "I am here to help you log dosimeter badge readings, check symptoms, and guide you on H2S occupational hygiene. How can I help you right now?"
+                )
+
+        return {
+            "reply": reply,
+            "quick_actions": ["Log Badge Reading (4.2)", "My Exposure Status", "Olfactory Smell Test", "PPE Guidelines"]
+        }
 
     def _handle_scan_submission(self, session: Dict[str, Any], message: str, db: Session, lang: str) -> Dict[str, Any]:
         worker_id = session.get("worker_id", "EMP-1042")
         
-        # Extract numerical readings from message
         nums = [float(n) for n in re.findall(r'\b\d+(?:\.\d+)?\b', message) if 0.0 <= float(n) <= 35.0]
         start_delta_e = 0.5
         end_delta_e = 4.2
@@ -110,10 +242,9 @@ class UnifiedChatAgent:
 
         shift_hours = 8.0
 
-        # Look up or create worker
-        db_worker = db.query(WorkerModel).filter(WorkerModel.worker_id == worker_id).first()
+        db_worker = db.query(EmployeeModel).filter(EmployeeModel.worker_id == worker_id).first()
         if not db_worker:
-            db_worker = WorkerModel(
+            db_worker = EmployeeModel(
                 worker_id=worker_id,
                 full_name=f"Worker {worker_id}",
                 plant_unit=unit,
@@ -139,7 +270,6 @@ class UnifiedChatAgent:
             exposure_ledger=ExposureLedger(**worker_dict.get("exposure_ledger", {}))
         )
 
-        # 1. Deterministic Math
         diff_res = compute_differential_shift_dose(
             start_delta_e=start_delta_e,
             end_delta_e=end_delta_e,
@@ -148,7 +278,6 @@ class UnifiedChatAgent:
             shift_hours=shift_hours
         )
 
-        # 2. Contextual Telemetry
         weather = get_kinetic_weather()
         telemetry = ContextualEnvironmentalTelemetry(
             temperature_c=weather["temperature_c"],
@@ -156,13 +285,10 @@ class UnifiedChatAgent:
             source=weather["source"]
         )
 
-        # 3. Ledger Update
-        prior_7d = worker_profile.exposure_ledger.rolling_7day_high_ppm_hr
         updated_ledger = update_worker_exposure_ledger(
             db, worker_id, diff_res["dose_low"], diff_res["dose_high"]
         )
 
-        # 4. Statutory Tier
         tier, is_single_crit = classify_statutory_tier_range(
             twa_low=diff_res["twa_low"],
             twa_high=diff_res["twa_high"],
@@ -179,11 +305,11 @@ class UnifiedChatAgent:
             shift_twa_high_ppm=diff_res["twa_high"],
             shift_twa_range_str=diff_res["twa_range_str"],
             shift_hours=shift_hours,
-            prior_7day_load_ppm_hr=prior_7d,
+            prior_7day_load_ppm_hr=worker_profile.exposure_ledger.rolling_7day_high_ppm_hr,
             updated_7day_load_low=updated_ledger["load_7d_low"],
             updated_7day_load_high=updated_ledger["load_7d_high"],
             updated_7day_range_str=updated_ledger["range_7d_str"],
-            statutory_tier=tier, # type: ignore
+            statutory_tier=tier,
             measurement_confidence=diff_res["confidence"],
             badge_integrity_warning=diff_res["integrity_warning"],
             is_single_shift_critical=is_single_crit
@@ -211,82 +337,83 @@ class UnifiedChatAgent:
             computed_metrics=metrics
         )
 
-        # Structured Advisory
         advisory = generate_dosimeter_advisory(worker_profile, scan_payload)
 
-        # Persist Scan
         db_scan = ShiftScanModel(
             scan_id=scan_id,
             worker_id=worker_id,
             plant_unit=unit,
             timestamp=datetime.now(timezone.utc),
+            shift_status="COMPLETED",
             shift_duration_hours=shift_hours,
-            badge_id=badge_data.badge_id,
+            badge_id="BAND-01",
+            start_delta_e=start_delta_e,
+            end_delta_e=end_delta_e,
+            net_delta_e=diff_res["net_delta_e"],
             delta_e=diff_res["net_delta_e"],
+            patch_b_drift=patch_b_drift,
+            patch_c_condition=patch_c_condition,
             shelf_life_status="VALID",
             raw_optical_dose=diff_res["nominal_dose"],
             temperature_c=weather["temperature_c"],
             relative_humidity_pct=weather["relative_humidity_pct"],
             k_factor=1.0,
             telemetry_source=weather["source"],
+            dose_low=diff_res["dose_low"],
+            dose_high=diff_res["dose_high"],
+            twa_low=diff_res["twa_low"],
+            twa_high=diff_res["twa_high"],
             compensated_dose_ppm_hr=diff_res["nominal_dose"],
             shift_twa_ppm=(diff_res["twa_low"] + diff_res["twa_high"]) / 2.0,
             updated_7day_load=updated_ledger["load_7d_high"],
             statutory_tier=tier,
+            measurement_confidence=diff_res["confidence"],
             is_single_shift_critical=is_single_crit,
             advisory_json=advisory.model_dump_json()
         )
         db.add(db_scan)
         db.commit()
 
-        # Build clean, human, empathetic response without math lectures
         if lang == "hi":
-            if tier == "TIER 3 (CRITICAL)":
-                status_msg = "🚨 **गंभीर चेतावनी:** आज आपकी शिफ्ट में H2S का स्तर काफी अधिक रहा है। कृपया तुरंत **ऑक्यूपेशनल हेल्थ सेंटर (OHC)** में रिपोर्ट करें और अपनी जांच करवाएं।"
-            elif tier == "TIER 2 (CAUTION)":
-                status_msg = "⚠️ **सावधानी:** आज आपकी शिफ्ट में हल्का बढ़ा हुआ एक्सपोजर दर्ज हुआ है। कृपया आईवॉश स्टेशन पर आंखों को सेलाइन से धोएं और 15-20 मिनट आराम करें।"
-            else:
-                status_msg = "✅ **शिफ्ट सुरक्षित:** आज आपकी शिफ्ट सामान्य और सुरक्षित सीमा के भीतर रही। जाने से पहले हाथ-मुंह धो लें और पानी अवश्य पिएं।"
-
-            integrity_note = "\n\n*(नोट: कलाई का बैज अगली शिफ्ट से पहले बदल लें।)*" if diff_res["integrity_warning"] else ""
-            triage_prompt = f"\n\n❓ **लक्षण जांच:** {advisory.bilingual_content.triage_question_hi if advisory.bilingual_content else advisory.triage_question}"
-            reply = status_msg + integrity_note + triage_prompt
+            reply = (
+                f"✅ **शिफ्ट बैज स्कैन सफलतापूर्वक दर्ज हुआ ({unit})**\n\n"
+                f"• **अनुमानित शिफ्ट एक्सपोजर:** `{metrics.shift_dose_range_str}`\n"
+                f"• **8-घंटे TWA:** `{metrics.shift_twa_range_str}`\n"
+                f"• **7-दिवसीय लोड:** `{metrics.updated_7day_range_str}`\n\n"
+                f"{advisory.bilingual_content.summary_banner_hi if advisory.bilingual_content else advisory.summary_banner}\n\n"
+                f"👉 **लक्षण जांच:** {advisory.bilingual_content.triage_question_hi if advisory.bilingual_content else advisory.triage_question}"
+            )
         else:
-            if tier == "TIER 3 (CRITICAL)":
-                status_msg = "🚨 **Critical Safety Alert:** High H2S exposure detected on your shift. Please proceed immediately to the **Occupational Health Centre (OHC)** for a precautionary medical evaluation."
-            elif tier == "TIER 2 (CAUTION)":
-                status_msg = "⚠️ **Precautionary Notice:** Moderately elevated exposure detected today. Please flush your eyes with saline at the wash station and rest in a clean shelter for 15–20 minutes."
-            else:
-                status_msg = "✅ **Shift Logged — Safe & Normal:** Your shift exposure is well within safe limits today. Good job following safety protocols! Please hydrate and wash up before heading out."
-
-            integrity_note = "\n\n*(Note: Your wristband should be replaced before your next shift.)*" if diff_res["integrity_warning"] else ""
-            triage_prompt = f"\n\n❓ **Symptom Check:** {advisory.triage_question}"
-            reply = status_msg + integrity_note + triage_prompt
+            reply = (
+                f"✅ **Shift Badge Scan Recorded ({unit})**\n\n"
+                f"• **Estimated Shift Exposure:** `{metrics.shift_dose_range_str}`\n"
+                f"• **8-Hour TWA:** `{metrics.shift_twa_range_str}`\n"
+                f"• **7-Day Cumulative Load:** `{metrics.updated_7day_range_str}`\n\n"
+                f"{advisory.summary_banner}\n\n"
+                f"👉 **Triage Check:** {advisory.triage_question}"
+            )
 
         return {
             "reply": reply,
             "scan_result": {
                 "scan_id": scan_id,
                 "tier": tier,
-                "twa_range": metrics.shift_twa_range_str,
                 "dose_range": metrics.shift_dose_range_str,
-                "updated_7day_range": metrics.updated_7day_range_str,
+                "twa_range": metrics.shift_twa_range_str,
+                "load_7day_range": metrics.updated_7day_range_str,
                 "confidence": metrics.measurement_confidence,
-                "integrity_warning": metrics.badge_integrity_warning,
-                "recommendations": [r.model_dump() for r in advisory.recommendations],
-                "mandatory_ohc_override_applied": advisory.mandatory_ohc_override_applied
+                "integrity_warning": metrics.badge_integrity_warning
             },
-            "quick_actions": ["No symptoms (सब ठीक है)", "Mild eye irritation (आंखों में जलन)", "Run Smell Test (गंध जांच)"]
+            "quick_actions": ["My Exposure Status", "Olfactory Smell Test", "PPE Guidelines"]
         }
 
     def _handle_exposure_query(self, session: Dict[str, Any], db: Session, lang: str) -> Dict[str, Any]:
         worker_id = session.get("worker_id", "EMP-1042")
-        worker = db.query(WorkerModel).filter(WorkerModel.worker_id == worker_id).first()
-        if not worker or not worker.ledger:
-            reply = "No previous shift logs found. Would you like to log today's badge reading?" if lang == "en" else "कोई पुराना रिकॉर्ड नहीं मिला। क्या आप आज का बैज दर्ज करना चाहते हैं?"
-            return {"reply": reply, "quick_actions": ["Log Badge Reading"]}
+        worker = db.query(EmployeeModel).filter(EmployeeModel.worker_id == worker_id).first()
+        if not worker:
+            return {"reply": "Worker profile not found.", "quick_actions": ["Log Badge Reading"]}
 
-        leg = worker.ledger
+        leg = worker.ledger or ExposureLedgerModel()
         load_7d = leg.rolling_7day_ppm_hr
         load_7d_low = round(load_7d * 0.88, 1)
         load_7d_high = round(load_7d * 1.12, 1)
@@ -295,7 +422,7 @@ class UnifiedChatAgent:
         is_safe = load_7d_high < 15.0
 
         if lang == "hi":
-            status_text = "🟢 **सामान्य एवं सुरक्षित** (सीमा: < 15.0 ppm·hr)" if is_safe else "🟡 **मध्यम (सावधानी आवश्यक)**"
+            status_text = "🟢 **सामान्य व सुरक्षित** (सीमा: < 15.0 ppm·hr)" if is_safe else "🟡 **सजगता स्तर (रोटेशन अनुशंसित)**"
             reply = (
                 f"📊 **आपकी हालिया एक्सपोजर स्थिति ({worker_id}):**\n\n"
                 f"• **7-दिवसीय संचयी स्थिति:** {status_text} (`{range_7d}`)\n"
@@ -339,7 +466,7 @@ class UnifiedChatAgent:
 
     def _handle_lung_risk_query(self, session: Dict[str, Any], db: Session, lang: str) -> Dict[str, Any]:
         worker_id = session.get("worker_id", "EMP-1042")
-        worker = db.query(WorkerModel).filter(WorkerModel.worker_id == worker_id).first()
+        worker = db.query(EmployeeModel).filter(EmployeeModel.worker_id == worker_id).first()
         if not worker:
             return {"reply": "Worker profile not found.", "quick_actions": ["Log Shift Reading"]}
 
@@ -374,25 +501,6 @@ class UnifiedChatAgent:
         return {
             "reply": reply,
             "quick_actions": ["Log Shift Reading", "My Exposure Status", "Olfactory Smell Test"]
-        }
-
-    def _handle_general_safety_query(self, message: str, session: Dict[str, Any], lang: str) -> Dict[str, Any]:
-        chunks, conf = retriever.query(message, top_k=2)
-        if chunks and conf >= 0.4:
-            context = "\n\n".join([f"**[{c['title']}]:**\n{c['content']}" for c in chunks])
-            if lang == "hi":
-                reply = f"🛡️ **सुरक्षा दिशानिर्देश (OISD / DGMS):**\n\n{context}\n\nयदि आप आज की शिफ्ट का बैज दर्ज करना चाहते हैं या किसी लक्षण के बारे में पूछना चाहते हैं, तो मुझे बताएं।"
-            else:
-                reply = f"🛡️ **Plant Safety Guidance:**\n\n{context}\n\nLet me know if you would like to log a badge reading or report any symptoms."
-        else:
-            if lang == "hi":
-                reply = "नमस्ते! मैं **रक्षक (Rakshak)** हूँ — आपका रिफाइनरी सुरक्षा साथी। मैं आपकी शिफ्ट का बैज दर्ज करने, लक्षणों की जांच करने और सुरक्षा नियमों में मदद करने के लिए तैयार हूँ। आज मैं आपकी क्या मदद करूँ?"
-            else:
-                reply = "Hello! I am **Rakshak (रक्षक)**, your plant safety companion. I'm here to help you log your shift badge, check for symptoms, and guide you on plant safety. How can I help you today?"
-                
-        return {
-            "reply": reply,
-            "quick_actions": ["Log Badge Reading (4.2)", "My Exposure Status", "Olfactory Smell Test", "OISD Work Permits"]
         }
 
 unified_chat = UnifiedChatAgent()
