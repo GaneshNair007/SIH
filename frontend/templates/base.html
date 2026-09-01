@@ -20,10 +20,7 @@
                             700: '#075985',
                             800: '#0c4a6e',
                             900: '#082f49',
-                        },
-                        amberAlert: '#f59e0b',
-                        redAlert: '#ef4444',
-                        greenSafe: '#10b981'
+                        }
                     }
                 }
             }
@@ -52,13 +49,23 @@
                     </div>
                 </a>
 
-                <!-- Nav Links -->
-                <nav class="hidden md:flex items-center space-x-1 lg:space-x-2 text-sm font-medium">
-                    <a href="/" class="px-3.5 py-2 rounded-lg bg-slate-800 text-cyan-300 font-semibold border border-slate-700 transition">
-                        <i class="fa-solid fa-comments mr-1.5 text-cyan-400"></i><span data-i18n="nav_chat">Rakshak Chatbot (रक्षक)</span>
+                <!-- Nav Links for Judges & Users -->
+                <nav class="hidden md:flex items-center space-x-1 lg:space-x-2 text-xs font-medium">
+                    <a href="/" class="px-3 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-comments text-cyan-400"></i>
+                        <span>Employee Portal (/)</span>
                     </a>
-                    <a href="/manager" class="px-3.5 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition">
-                        <i class="fa-solid fa-chart-line mr-1.5 text-amber-400"></i><span data-i18n="nav_manager">Shift Manager Portal</span>
+                    <a href="/manager" class="px-3 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-chart-line text-amber-400"></i>
+                        <span>Manager Control Room</span>
+                    </a>
+                    <a href="/manager/scan" class="px-3 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-camera-viewfinder text-purple-400"></i>
+                        <span>AI Optical Scanner</span>
+                    </a>
+                    <a href="/login" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 text-cyan-300 border border-cyan-800/80 font-bold transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-bolt text-cyan-400"></i>
+                        <span>1-Click Demo</span>
                     </a>
                 </nav>
 

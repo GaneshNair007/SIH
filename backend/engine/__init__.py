@@ -7,6 +7,7 @@ from .statutory import (
 )
 from .ledger import update_worker_exposure_ledger
 from .vision_scanner import VisionScanner, vision_scanner
+from .event_bus import event_bus, RealtimeEventBus
 
 __all__ = [
     "get_kinetic_weather",
@@ -17,5 +18,7 @@ __all__ = [
     "classify_statutory_tier_range",
     "update_worker_exposure_ledger",
     "VisionScanner",
-    "vision_scanner"
+    "vision_scanner",
+    "event_bus",
+    "RealtimeEventBus"
 ]

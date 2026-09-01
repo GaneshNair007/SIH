@@ -8,6 +8,22 @@ def utc_now():
 PatchCondition = Literal["NORMAL", "WARNING", "COMPROMISED"]
 MeasurementConfidence = Literal["HIGH", "MEDIUM", "LOW", "INVALID"]
 
+class StartShiftRequest(BaseModel):
+    employee_id: str = Field(default="EMP-1042", description="Employee ID, e.g. EMP-1042")
+    plant_unit: str = Field(default="CDU-1", description="Refinery operating unit")
+    badge_id: str = Field(default="BAND-1042-01", description="Wristband Barcode/RFID")
+    start_delta_e: float = Field(default=0.4, ge=0.0, description="Start-of-shift optical baseline ΔE_start")
+    band_lifecycle_day: int = Field(default=1, ge=1, le=5, description="Day of band rotation (1-5)")
+
+class EndShiftRequest(BaseModel):
+    employee_id: str = Field(default="EMP-1042", description="Employee ID")
+    plant_unit: Optional[str] = Field(default=None, description="Refinery unit (defaults to start shift unit)")
+    end_delta_e: float = Field(..., ge=0.0, description="End-of-shift optical density ΔE_end")
+    start_delta_e: Optional[float] = Field(default=None, description="Start-of-shift baseline (optional if active shift exists)")
+    patch_b_drift: float = Field(default=0.10, ge=0.0, description="Patch B control drift")
+    patch_c_condition: PatchCondition = Field(default="NORMAL", description="Patch C indicator condition")
+    shift_duration_hours: float = Field(default=8.0, ge=0.1, le=24.0, description="Shift duration in hours")
+
 class BadgeData(BaseModel):
     badge_id: str = Field(..., description="Unique dosimeter wristband barcode/RFID, e.g., BAND-H2S-0842")
     band_lifecycle_day: int = Field(default=1, ge=1, le=5, description="Day of band deployment (max 5-day lifecycle)")

@@ -165,22 +165,43 @@ Every advisory itemizes actions strictly in ascending priority order:
   3. Removed legacy unused frontend artifacts (`src/`, `package.json`, `package-lock.json`, `tsconfig.json`, `next.config.mjs`, `postcss.config.mjs`, `tailwind.config.ts`, `.eslintrc.json`, `AGENT_BUILD_SPEC.md`).
 * **Tests:** 30/30 unit and integration tests passing.
 
+### [2026-09-01] — Complete Backend Architecture & 1-Click Demo Mode
+* **Feature:** Core Architecture, Active Shift Lifecycle & Demo Mode
+* **Scope:**
+  1. **1-Click Demo Mode & Role Selector:** Built `/login` with 1-click demo buttons for judges (`Employee (EMP-1042 Rajesh Kumar)` and `Shift Manager (Vikram Singh)`).
+  2. **Active Dual-Scan Shift Lifecycle:** Added `POST /api/scan/start-shift` for baseline check-in (marking shift `ACTIVE`) and `POST /api/scan/end-shift` for differential calculation, statutory tiering, and rolling ledger updates (marking shift `COMPLETED`).
+  3. **Real-Time SSE Event Stream:** Implemented `GET /api/realtime/stream` broadcasting live scans and Tier 3 emergency alerts to manager dashboards.
+  4. **Manager Control Room APIs:** Added `GET /api/manager/dashboard` (KPIs), `GET /api/manager/employees` (Roster), `GET /api/manager/employees/{id}` (Longitudinal Dossier & 90-day Trajectory), `GET /api/manager/heatmap`, and `GET /api/manager/incident-pdf/{id}`.
+  5. **Auto-Seeded Database:** Pre-populated SQLite database on startup with refinery units (`CDU-1`, `CDU-2`, `DHDS`, `SRU`, `Tank Farm`), employees, ledgers, and initial shift records.
+* **Files Modified/Created:** `backend/main.py`, `backend/database/models.py`, `backend/database/db.py`, `backend/engine/event_bus.py`, `backend/schemas/auth.py`, `backend/schemas/dosimetry.py`, `frontend/templates/login.html`, `frontend/templates/base.html`, `tests/test_demo_auth.py`, `tests/test_shift_lifecycle.py`, `Agent.md`.
+* **Tests:** 40/40 unit and integration tests passing (100%).
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary
 
 | Method | Route | Description |
 | :--- | :--- | :--- |
-| `GET` | `/` | Rakshak AI Safety Chatbot Interface |
-| `POST` | `/api/chat` | Unified multi-turn conversational chat endpoint |
+| `GET` | `/` | Rakshak AI Safety Chatbot Interface (Employee Portal) |
+| `GET` | `/login` | Login Page with 1-Click Instant Demo Role Selectors |
+| `POST` | `/api/auth/demo-login` | 1-Click Instant Demo Session Activation |
+| `POST` | `/api/auth/login` | Standard credential authentication |
+| `GET` | `/api/auth/me` | Current session / user info |
+| `POST` | `/api/auth/logout` | Session clear / logout |
+| `POST` | `/api/scan/start-shift` | Start-of-shift check-in & baseline optical logging |
 | `POST` | `/api/scan/analyze-image` | Optical photo analysis & neural network exposure prediction |
-| `GET` | `/manager/scan` or `/scan` | Differential scan submission, live camera viewfinder & triage drawer |
-| `POST` | `/api/scan/submit` | Differential scan processing with uncertainty range output |
-| `GET` | `/control-room/workers/{id}` | Worker profile insights & longitudinal history |
-| `GET` | `/api/control-room/workers/{id}` | JSON payload for worker profile & 90-day lung risk |
-| `GET` | `/manager` or `/supervisor` | Shift supervisor portal with 2D leak heatmap |
-| `GET` | `/api/supervisor/heatmap` | Spatial 2D fugitive leak interpolation coordinates |
-| `GET` | `/api/supervisor/incident-pdf/{id}` | 1-Click downloadable OISD-STD-105 Form-A PDF |
+| `POST` | `/api/scan/end-shift` | End-of-shift differential dosimetry calculation & advisory |
+| `POST` | `/api/scan/submit` | Differential scan submission (backward-compatible) |
+| `GET` | `/api/realtime/stream` | Server-Sent Events (SSE) live control room feed |
+| `GET` | `/manager` or `/supervisor` | Shift Manager Control Room Interface |
+| `GET` | `/api/manager/dashboard` | Plant safety KPIs, workforce totals & unit breakdown |
+| `GET` | `/api/manager/employees` | Full employee roster with 7-day load ranges |
+| `GET` | `/api/manager/employees/{id}` | Detailed employee dossier & 90-day trajectory |
+| `GET` | `/manager/scan` or `/scan` | AI Optical Scanner Viewfinder & Interactive Triage Drawer |
+| `GET` | `/api/manager/heatmap` | Spatial 2D fugitive leak interpolation coordinates |
+| `GET` | `/api/manager/incident-pdf/{id}` | 1-Click downloadable OISD-STD-105 Form-A PDF |
+| `POST` | `/api/chat` | Multi-turn conversational Rakshak AI safety chatbot |
 | `POST` | `/api/screener/neuro-test` | Neuro-olfactory fatigue test endpoint |
-| `GET` | `/api/workers/{id}/lung-risk` | Chronic lung risk score breakdown |
+| `GET` | `/api/employees/{id}/lung-risk` | Chronic lung risk score breakdown |
+| `GET` | `/api/health` | System health check & Groq status |
 | `GET` | `/api/health` | System health check & Groq configuration status |
