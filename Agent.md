@@ -186,6 +186,30 @@ Every advisory itemizes actions strictly in ascending priority order:
 * **Files Modified:** `backend/engine/vision_scanner.py`, `backend/main.py`, `frontend/templates/scan.html`, `requirements.txt`, `tests/test_vision_scanner.py`, `Agent.md`.
 * **Tests:** 42/42 unit and integration tests passing (100%).
 
+### [2026-09-02] — Hot-Reload Watcher Isolation & Windows Console Signal Hardening
+* **Feature:** Application Server & Dev Stability Infrastructure
+* **Problem:** 
+  1. On Windows, Uvicorn's default reloader (`BaseReload.restart`) calls `os.kill(self.process.pid, signal.CTRL_C_EVENT)`. Under the Win32 subsystem, `GenerateConsoleCtrlEvent(CTRL_C_EVENT, ...)` broadcasts `CTRL_C` to **all processes attached to the terminal/console**, causing the IDE extension host, language servers, and Antigravity AI Agent host to crash / restart whenever code is edited.
+  2. Unconstrained root watching previously polled `venv/`, `.git/`, and `rakshak.db`, causing reload loops.
+* **Scope:**
+  1. **Console Signal Isolation (`run.py` & `venv/.../basereload.py`):** Eliminated `os.kill(pid, signal.CTRL_C_EVENT)` on Windows, replacing it with direct `process.terminate()` via Win32 `TerminateProcess`. This terminates only the child worker process and prevents broadcasting `CTRL_C` events to the terminal console group.
+  2. **Hot-Reload Isolation (`run.py`):** Configured explicit `reload_dirs=["backend", "frontend"]`, `reload_includes=["*.py", "*.html", "*.css", "*.js", "*.json"]`, and `reload_excludes` to ignore all `.db`, `.db-journal`, `.db-wal`, `venv/`, `.git/`, `.pytest_cache/`, `*.md`, `*.log`, and temporary files. Added `reload_delay=0.5` debounce.
+  3. **High-Performance Watcher (`watchfiles`):** Installed `watchfiles>=1.2.0` (Rust-based `notify` OS event listener) in `requirements.txt` and virtualenv to replace CPU-heavy `StatReload`.
+  4. **SQLite WAL Mode & Concurrency (`backend/database/db.py`):** Added `timeout=30.0` and enabled SQLite `PRAGMA journal_mode=WAL` with `PRAGMA busy_timeout=30000` to prevent database lock contention during concurrent queries and server reloads.
+  5. **FastAPI Lifespan Integration (`backend/main.py`):** Migrated database initialization from global module import time into `@asynccontextmanager` `lifespan(app: FastAPI)` so database schema operations occur cleanly on startup.
+* **Files Modified:** `run.py`, `backend/main.py`, `backend/database/db.py`, `requirements.txt`, `venv/Lib/site-packages/uvicorn/supervisors/basereload.py`, `Agent.md`.
+* **Tests:** 42/42 unit and integration tests passing (100%).
+
+### [2026-09-02] — Marked.js Markdown Parser & Chat Bubble Typography
+* **Feature:** Feature 1: AI Advisory Chatbot (Rakshak / रक्षक)
+* **Problem:** Chatbot responses containing markdown syntax (`### Heading`, `* **Bold Item:**`, `**Text**`, `1. Step`) were being rendered as raw text strings without HTML parsing, causing raw symbols (`***`, `**`, `###`) to appear on screen.
+* **Scope:**
+  1. **Marked.js Integration (`frontend/templates/base.html` & `frontend/templates/index.html`):** Integrated `marked.js` library to parse markdown into structured, semantic HTML (`<h3>`, `<strong>`, `<ul><li>`, `<ol><li>`, `<p>`, `<code>`).
+  2. **Chat Bubble Typography (`frontend/static/css/style.css`):** Added `.chat-markdown` styling rules for clean section headers, bold highlighting, bullet spacing, and code tags.
+  3. **Fallback Parser:** Added regex fallback formatting in JavaScript if CDN is delayed.
+* **Files Modified:** `frontend/templates/base.html`, `frontend/templates/index.html`, `frontend/static/css/style.css`, `Agent.md`.
+* **Tests:** 42/42 unit and integration tests passing (100%).
+
 ---
 
 ## 🌐 API Endpoints & Routes Summary

@@ -72,6 +72,20 @@
 <script>
 let currentSession = 'worker_sess_' + Math.random().toString(36).substr(2, 9);
 
+function formatMarkdown(content) {
+    if (!content) return '';
+    if (typeof marked !== 'undefined' && marked.parse) {
+        return marked.parse(content);
+    }
+    // Fallback: simple regex replacements
+    return content
+        .replace(/^### (.*$)/gim, '<h3 class="font-bold text-cyan-400 mt-2 mb-1">$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2 class="font-bold text-cyan-300 mt-2 mb-1">$1</h2>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^\* (.*$)/gim, '• $1')
+        .replace(/\n/g, '<br>');
+}
+
 function addBotMessage(text, scanResult = null) {
     const stream = document.getElementById('chatStream');
     const msgDiv = document.createElement('div');
@@ -129,12 +143,14 @@ function addBotMessage(text, scanResult = null) {
         `;
     }
 
+    const formattedContent = formatMarkdown(text);
+
     msgDiv.innerHTML = `
         <div class="w-8 h-8 rounded-xl bg-cyan-600 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold shadow">
             <i class="fa-solid fa-shield-halved"></i>
         </div>
-        <div class="bg-slate-800/90 border border-slate-700/80 text-slate-100 rounded-2xl rounded-tl-none p-4 max-w-[85%] leading-relaxed whitespace-pre-line shadow-md">
-            ${text}
+        <div class="bg-slate-800/90 border border-slate-700/80 text-slate-100 rounded-2xl rounded-tl-none p-4 max-w-[85%] leading-relaxed shadow-md chat-markdown">
+            ${formattedContent}
             ${cardHtml}
         </div>
     `;

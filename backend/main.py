@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Response, File, UploadFile
@@ -41,13 +42,17 @@ from backend.intelligence.neuro_screener import evaluate_neuro_olfactory_screen,
 from backend.intelligence.lung_risk import calculate_chronic_lung_risk_score
 from backend.intelligence.incident_report import generate_oisd_form_a_pdf
 
-# Initialize Database Schema & Seed Data
-init_db()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle manager: Initializes database schema and seeds default data on startup."""
+    init_db()
+    yield
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Occupational H2S Exposure Advisory & Plant Safety Intelligence Platform"
+    description="Occupational H2S Exposure Advisory & Plant Safety Intelligence Platform",
+    lifespan=lifespan
 )
 
 # CORS
