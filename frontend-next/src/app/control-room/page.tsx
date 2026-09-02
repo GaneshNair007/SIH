@@ -17,6 +17,7 @@ import {
 } from "@/lib/types";
 import ProtectedNavbar from "@/components/layout/ProtectedNavbar";
 import Footer from "@/components/layout/Footer";
+import WorkerQrModal from "@/components/dashboard/WorkerQrModal";
 import { 
   Activity, 
   ShieldAlert, 
@@ -28,7 +29,8 @@ import {
   RefreshCw,
   Search,
   CheckCircle2,
-  MapPin
+  MapPin,
+  QrCode
 } from "lucide-react";
 
 type ControlTab = "overview" | "workers" | "shifts" | "incidents" | "heatmap";
@@ -42,6 +44,12 @@ export default function ControlRoomPage() {
   const [heatmapData, setHeatmapData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedWorkerForQr, setSelectedWorkerForQr] = useState<WorkerProfileData | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const { connected, lastHeartbeat } = useSSE(() => {
     fetchControlData();
@@ -104,8 +112,8 @@ export default function ControlRoomPage() {
                   <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
                   <span>{connected ? "LIVE EVENT STREAM" : "POLLING MODE"}</span>
                 </div>
-                <div className="text-[10px] text-sage font-mono mt-0.5">
-                  Last Sync: {lastHeartbeat || new Date().toLocaleTimeString()}
+                <div className="text-[10px] text-sage font-mono mt-0.5" suppressHydrationWarning>
+                  Last Sync: {lastHeartbeat || (mounted ? new Date().toLocaleTimeString() : "Live")}
                 </div>
               </div>
               <button
@@ -313,6 +321,7 @@ export default function ControlRoomPage() {
                       <th className="p-3.5">Active Band</th>
                       <th className="p-3.5">7-Day Load</th>
                       <th className="p-3.5">30-Day Load</th>
+                      <th className="p-3.5 text-center">Wristband QR</th>
                       <th className="p-3.5 pr-4 text-right">Dossier</th>
                     </tr>
                   </thead>
@@ -330,6 +339,17 @@ export default function ControlRoomPage() {
                         <td className="p-3.5 font-mono text-teal-deep">{emp.active_badge_id || "BAND-01"}</td>
                         <td className="p-3.5 font-mono font-bold">{emp.exposure_ledger?.rolling_7day_ppm_hr ?? 0} ppm·h</td>
                         <td className="p-3.5 font-mono text-sage-muted">{emp.exposure_ledger?.rolling_30day_ppm_hr ?? 0} ppm·h</td>
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWorkerForQr(emp)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-warm-white hover:bg-yellow-golden/25 border border-light-surface hover:border-yellow-golden text-charcoal font-semibold text-xs rounded-lg transition-all shadow-sm group"
+                            title={`Generate & Print QR for ${emp.full_name}`}
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-teal-deep group-hover:scale-110 transition-transform" />
+                            <span className="font-mono text-[11px] font-bold">Badge QR</span>
+                          </button>
+                        </td>
                         <td className="p-3.5 pr-4 text-right">
                           <Link
                             href={`/workers/${emp.worker_id}`}
@@ -345,6 +365,12 @@ export default function ControlRoomPage() {
               </div>
             </div>
           )}
+
+          {/* Wristband QR Code Generator Modal */}
+          <WorkerQrModal
+            worker={selectedWorkerForQr}
+            onClose={() => setSelectedWorkerForQr(null)}
+          />
 
           {/* 4. Statutory Incidents Tab */}
           {activeTab === "incidents" && (

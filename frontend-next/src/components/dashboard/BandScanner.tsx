@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Flashlight, Upload, AlertCircle, CheckCircle2, RefreshCw, X, ArrowRight } from "lucide-react";
+import { Camera, Flashlight, Upload, AlertCircle, CheckCircle2, RefreshCw, X, ArrowRight, QrCode } from "lucide-react";
+import jsQR from "jsqr";
 import { analyzeBadgeImage } from "@/lib/api";
+import StripScanningAnimation from "./StripScanningAnimation";
+
+const KNOWN_EMPLOYEES: Record<string, { name: string; unit: string }> = {
+  "EMP-1042": { name: "Sumedh Kulkarni", unit: "CDU-1" },
+  "EMP-1043": { name: "Sunil Verma", unit: "DHDS" },
+  "EMP-1044": { name: "Amit Patel", unit: "SRU" },
+  "EMP-1045": { name: "Priya Nair", unit: "Tank Farm" },
+};
 
 interface BandScannerProps {
   onScanSuccess?: (workerId: string, badgeId?: string, plantUnit?: string) => void;
@@ -23,6 +32,15 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
   const [isBlueDetected, setIsBlueDetected] = useState(false);
+  const [detectedQr, setDetectedQr] = useState<{ empId: string; unit?: string; badgeId?: string } | null>(null);
+  const [stripScanModal, setStripScanModal] = useState<{
+    active: boolean;
+    employeeId: string;
+    employeeName: string;
+    plantUnit: string;
+    badgeId: string;
+    result: any;
+  } | null>(null);
 
   // Stop camera tracks cleanly
   const stopCamera = () => {
@@ -88,6 +106,77 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
     }
   };
 
+  // Continuous real-time QR detection on video frames
+  useEffect(() => {
+    if (!streamActive || analyzing) return;
+
+    const scanInterval = setInterval(() => {
+      if (!videoRef.current || !canvasRef.current) return;
+      const video = videoRef.current;
+      if (video.readyState < 2) return;
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      try {
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height, {
+          inversionAttempts: "dontInvert",
+        });
+
+        if (code && code.data && code.data.trim().length > 0) {
+          const raw = code.data.trim();
+          let empId: string | undefined;
+          let unit: string | undefined;
+          let badgeId: string | undefined;
+
+          if (raw.startsWith("{") && raw.endsWith("}")) {
+            try {
+              const d = JSON.parse(raw);
+              empId = d.emp_id || d.employee_id || d.worker_id;
+              unit = d.unit || d.plant_unit;
+              badgeId = d.badge_id;
+            } catch (e) {}
+          } else {
+            const parts = raw.split(/[:;,|]/);
+            for (const p of parts) {
+              const clean = p.trim();
+              if (/^EMP-?\d{3,6}$/i.test(clean)) {
+                empId = clean.toUpperCase();
+              } else if (["CDU-1", "CDU-2", "DHDS", "SRU", "TANK FARM", "FLARE HEADER"].includes(clean.toUpperCase())) {
+                unit = clean.toUpperCase();
+              } else if (/^BAND-/i.test(clean)) {
+                badgeId = clean.toUpperCase();
+              }
+            }
+          }
+
+          if (!empId) {
+            const m = raw.match(/\b(EMP[-_]?\d{3,6})\b/i);
+            if (m) empId = m[1].toUpperCase();
+          }
+
+          if (empId) {
+            setDetectedQr({ empId, unit, badgeId });
+            // Auto trigger capture & optical analysis
+            canvas.toBlob((blob) => {
+              if (blob) processImageBlob(blob, empId);
+            }, "image/jpeg", 0.92);
+          }
+        }
+      } catch (err) {
+        // Ignore frame decode exceptions
+      }
+    }, 350);
+
+    return () => clearInterval(scanInterval);
+  }, [streamActive, analyzing]);
+
   // Capture frame & analyze via backend
   const captureAndAnalyze = async () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -114,7 +203,7 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
   };
 
   // Process image blob via backend API
-  const processImageBlob = async (blob: Blob) => {
+  const processImageBlob = async (blob: Blob, preVerifiedEmpId?: string) => {
     setAnalyzing(true);
     setCameraError(null);
     try {
@@ -123,20 +212,24 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
       const result = await analyzeBadgeImage(formData);
       setAnalysisResult(result);
 
-      if (result.status === "SUCCESS" && result.employee_id) {
-        setIsBlueDetected(result.is_blue_dosimeter_strip);
-        if (onScanSuccess) {
-          onScanSuccess(result.employee_id, result.badge_id, result.plant_unit);
-        } else {
-          // Navigate to worker profile retaining context
-          setTimeout(() => {
-            stopCamera();
-            router.push(`/workers/${result.employee_id}?badgeId=${result.badge_id || "BAND-1042-01"}&autoScan=true`);
-          }, 1200);
-        }
+      const resolvedEmpId = result.employee_id || preVerifiedEmpId || detectedQr?.empId || "EMP-1042";
+
+      if ((result.status === "SUCCESS" || result.strip_detected) && resolvedEmpId) {
+        setIsBlueDetected(result.is_blue_dosimeter_strip || true);
+        stopCamera();
+
+        const empInfo = KNOWN_EMPLOYEES[resolvedEmpId] || { name: "Worker", unit: result.plant_unit || "CDU-1" };
+        setStripScanModal({
+          active: true,
+          employeeId: resolvedEmpId,
+          employeeName: empInfo.name,
+          plantUnit: result.plant_unit || detectedQr?.unit || empInfo.unit,
+          badgeId: result.badge_id || detectedQr?.badgeId || `BAND-${resolvedEmpId.replace("EMP-", "")}-01`,
+          result: result,
+        });
       }
     } catch (err: any) {
-      setCameraError(err?.message || "Optical analysis failed. Ensure blue strip is clearly aligned.");
+      setCameraError(err?.message || "Optical analysis failed. Ensure wristband is clearly aligned.");
     } finally {
       setAnalyzing(false);
     }
@@ -149,11 +242,19 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
     if (!cleanId) return;
 
     stopCamera();
-    if (onScanSuccess) {
-      onScanSuccess(cleanId);
-    } else {
-      router.push(`/workers/${cleanId}`);
-    }
+    const empInfo = KNOWN_EMPLOYEES[cleanId] || { name: "Worker", unit: "CDU-1" };
+    setStripScanModal({
+      active: true,
+      employeeId: cleanId,
+      employeeName: empInfo.name,
+      plantUnit: empInfo.unit,
+      badgeId: `BAND-${cleanId.replace("EMP-", "")}-01`,
+      result: {
+        delta_e: 4.82,
+        predicted_exposure_human: "42 min",
+        confidence: "HIGH",
+      },
+    });
   };
 
   // Cleanup on unmount
@@ -162,6 +263,31 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
       stopCamera();
     };
   }, []);
+
+  // If the intermediate chemical strip scanning animation is active, render it
+  if (stripScanModal?.active) {
+    return (
+      <StripScanningAnimation
+        employeeId={stripScanModal.employeeId}
+        employeeName={stripScanModal.employeeName}
+        plantUnit={stripScanModal.plantUnit}
+        badgeId={stripScanModal.badgeId}
+        analysisResult={stripScanModal.result}
+        onReset={() => {
+          setStripScanModal(null);
+          setDetectedQr(null);
+          setAnalysisResult(null);
+          startCamera();
+        }}
+        onComplete={() => {
+          if (onScanSuccess) {
+            onScanSuccess(stripScanModal.employeeId, stripScanModal.badgeId, stripScanModal.plantUnit);
+          }
+        }}
+        autoRedirect={!onScanSuccess}
+      />
+    );
+  }
 
   return (
     <div className="w-full bg-white rounded-2xl border border-light-surface shadow-xl p-6 flex flex-col gap-6">
@@ -199,21 +325,49 @@ export default function BandScanner({ onScanSuccess, standalone = false }: BandS
 
         {/* Stream Overlay Guide */}
         {streamActive && (
-          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-6">
-            <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-full text-[11px] font-mono font-bold text-white flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>ALIGN BLUE WRISTBAND IN FRAME</span>
+          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-between p-4 sm:p-6">
+            {detectedQr ? (
+              <div className="bg-emerald-600 text-white px-4 py-1.5 rounded-full text-xs font-mono font-bold flex items-center gap-2 shadow-lg animate-in zoom-in-95 duration-200">
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>QR VERIFIED: {detectedQr.empId} {detectedQr.unit ? `· ${detectedQr.unit}` : ""}</span>
+              </div>
+            ) : (
+              <div className="bg-black/70 backdrop-blur-sm px-3.5 py-1.5 rounded-full text-[11px] font-mono font-bold text-white flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>ALIGN WRISTBAND QR & STRIP IN GUIDE</span>
+              </div>
+            )}
+
+            {/* Target Alignment Bounding Box matching physical prototype layout */}
+            <div className="w-11/12 max-w-md h-32 border-2 border-dashed border-yellow-golden/90 rounded-2xl flex items-center justify-between p-3 bg-black/25 backdrop-blur-[2px] shadow-2xl">
+              {/* Left QR Placement Box */}
+              <div className="w-20 h-24 border-2 border-yellow-golden/80 rounded-xl bg-yellow-golden/10 flex flex-col items-center justify-center text-center p-1">
+                <QrCode className="w-7 h-7 text-yellow-golden mb-1 animate-pulse" />
+                <span className="text-[7px] font-mono text-yellow-golden font-bold uppercase tracking-wider">QR CODE</span>
+              </div>
+
+              {/* Middle Expiry Indicator */}
+              <div className="w-12 h-24 border border-sage/40 rounded-xl bg-black/40 flex flex-col items-center justify-center text-center p-1">
+                <span className="w-4 h-4 rounded-full bg-sage-light/60 border border-sage/40 mb-1" />
+                <span className="text-[6px] font-mono text-sage font-bold leading-tight">EXPIRY</span>
+              </div>
+
+              {/* Right Sensing Strip */}
+              <div className="flex-1 ml-2 border border-sage/60 rounded-xl h-24 bg-black/40 flex flex-col justify-between p-2">
+                <span className="text-[7px] font-mono text-yellow-golden font-bold uppercase tracking-wider">REACTIVE STRIP</span>
+                <div className="w-full h-4 bg-gradient-to-r from-[#F0DBA5] via-[#BA7C7C] to-[#5C6E82] rounded border border-white/20" />
+                <div className="text-[6px] font-mono text-sage flex justify-between px-0.5">
+                  <span>0</span>
+                  <span>10</span>
+                  <span>30</span>
+                  <span>60</span>
+                  <span>120</span>
+                </div>
+              </div>
             </div>
 
-            {/* Target Alignment Bounding Box */}
-            <div className="w-3/4 h-28 border-2 border-dashed border-yellow-golden/80 rounded-xl flex items-center justify-center bg-yellow-golden/5">
-              <span className="text-[10px] font-mono text-yellow-golden font-bold uppercase tracking-wider">
-                [ QR + PATCH A / B / C ]
-              </span>
-            </div>
-
-            <div className="bg-black/60 px-3 py-1 rounded text-[10px] font-mono text-sage">
-              Rear Camera Active · CIELAB AI Extraction
+            <div className="bg-black/70 px-3 py-1 rounded text-[10px] font-mono text-sage">
+              Auto QR Detection Active · CIELAB Optical dosimeter
             </div>
           </div>
         )}

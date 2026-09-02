@@ -46,7 +46,7 @@ export default function Footer() {
       </div>
 
       <div className="max-w-7xl mx-auto pt-6 border-t border-dark-surface flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-sage-muted">
-        <div>
+        <div suppressHydrationWarning>
           © {new Date().getFullYear()} {PROJECT_NAME}. Powered by {ENGINE_NAME}.
         </div>
         <div className="flex items-center gap-6">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -21,6 +21,19 @@ interface ExposureChartProps {
 
 export default function ExposureChart({ scans }: ExposureChartProps) {
   const [timeframe, setTimeframe] = useState<"daily" | "weekly" | "monthly">("daily");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="h-72 w-full bg-warm-white/60 rounded-xl flex items-center justify-center text-xs font-mono text-sage-muted">
+        Loading exposure telemetry chart...
+      </div>
+    );
+  }
 
   if (!scans || scans.length === 0) {
     return (
@@ -42,6 +55,12 @@ export default function ExposureChart({ scans }: ExposureChartProps) {
       const twa = typeof metrics.shift_twa_ppm === "number" ? metrics.shift_twa_ppm : (metrics.twa_low ?? 0);
       const deltaE = scan.badge_data?.net_delta_e ?? (scan.badge_data?.delta_e ?? 0);
       const dateStr = scan.timestamp ? new Date(scan.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : `Shift ${idx + 1}`;
+      const hazardScore = typeof metrics.hazard_score_5pt === "number"
+        ? metrics.hazard_score_5pt
+        : Math.min(5.0, Math.max(0.0, parseFloat((doseHigh / 4.0).toFixed(1))));
+      const simpleLevel = metrics.hazard_level_simple || (
+        hazardScore <= 1.5 ? "SAFE" : hazardScore <= 3.4 ? "CAUTION" : "CRITICAL"
+      );
 
       return {
         name: dateStr,
@@ -51,6 +70,8 @@ export default function ExposureChart({ scans }: ExposureChartProps) {
         doseHigh: parseFloat(doseHigh.toFixed(1)),
         twa: parseFloat(twa.toFixed(2)),
         deltaE: parseFloat(deltaE.toFixed(2)),
+        hazardScore: parseFloat(hazardScore.toFixed(1)),
+        simpleLevel: simpleLevel,
         tier: metrics.statutory_tier || "TIER 1 (NORMAL)",
         unit: scan.plant_unit || "CDU-1",
       };
@@ -60,19 +81,46 @@ export default function ExposureChart({ scans }: ExposureChartProps) {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-[#171C1B] text-white p-3.5 rounded-xl border border-sage/20 shadow-xl text-xs font-mono space-y-1.5 z-50">
-          <div className="font-bold text-yellow-golden">{data.fullDate} · {data.unit}</div>
-          <div className="border-t border-sage/20 pt-1">
-            Dose Range: <strong className="text-white">{data.doseLow}–{data.doseHigh} ppm·h</strong>
+        <div className="bg-[#171C1B] text-white p-3.5 rounded-xl border border-sage/20 shadow-xl text-xs font-mono space-y-2 z-50 min-w-[200px]">
+          <div className="flex items-center justify-between gap-3 border-b border-sage/20 pb-1.5">
+            <span className="font-bold text-yellow-golden text-[11px]">{data.fullDate}</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+              data.hazardScore > 3.4
+                ? "bg-red-500/20 text-red-400"
+                : data.hazardScore > 1.5
+                ? "bg-amber-500/20 text-amber-400"
+                : "bg-emerald-500/20 text-emerald-400"
+            }`}>
+              {data.simpleLevel}
+            </span>
           </div>
-          <div>
-            Shift TWA: <strong className="text-emerald-400">{data.twa} ppm</strong>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-sage">Hazard Score:</span>
+            <strong className={`font-bold ${
+              data.hazardScore > 3.4
+                ? "text-red-400"
+                : data.hazardScore > 1.5
+                ? "text-yellow-golden"
+                : "text-emerald-400"
+            }`}>
+              ★ {data.hazardScore.toFixed(1)} / 5.0
+            </strong>
           </div>
-          <div>
-            Net Optical ΔE: <strong className="text-sage">{data.deltaE}</strong>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-sage">Total Exposure:</span>
+            <strong className="text-white">{data.doseLow}–{data.doseHigh} ppm·h</strong>
           </div>
-          <div className="text-[10px] text-sage-light pt-0.5">
-            Status: {data.tier}
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-sage">Average TWA:</span>
+            <strong className="text-white">{data.twa} ppm</strong>
+          </div>
+
+          <div className="text-[10px] text-sage-muted pt-1 border-t border-sage/10 flex justify-between">
+            <span>Station: {data.unit}</span>
+            <span>Net ΔE: {data.deltaE}</span>
           </div>
         </div>
       );

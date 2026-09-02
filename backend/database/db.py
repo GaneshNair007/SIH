@@ -48,8 +48,8 @@ def seed_default_data(db):
     employees_data = [
         {
             "worker_id": "EMP-1042",
-            "full_name": "Rajesh Kumar",
-            "age": 38,
+            "full_name": "Sumedh Kulkarni",
+            "age": 25,
             "gender": "Male",
             "department": "Operations",
             "plant_unit": "CDU-1",

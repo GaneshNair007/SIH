@@ -106,62 +106,74 @@ class ScanSubmissionRequest(BaseModel):
 
 # ----------------- HTML PAGE ROUTES -----------------
 
+FALLBACK_HTML = """
+<!DOCTYPE html>
+<html>
+<head><title>STRELA / Rakshak Dosimeter Monitoring Platform</title></head>
+<body style="font-family: sans-serif; text-align: center; padding: 50px;">
+  <h1>STRELA / Rakshak Occupational Dosimeter Monitoring Platform</h1>
+  <p>Worker Safety Portal & Dashboard is running on Next.js frontend at <a href="http://localhost:3000">http://localhost:3000</a></p>
+  <p>Backend API & Telemetry Engine: Active on port 8000</p>
+</body>
+</html>
+"""
+
 @app.get("/", response_class=HTMLResponse)
 def index_page(request: Request):
     """Primary Worker/Employee Entrypoint — Rakshak AI Safety Chatbot."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="index.html")
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     """Login Page with 1-Click Instant Demo Role Selectors."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="login.html")
 
 @app.get("/manager", response_class=HTMLResponse)
 @app.get("/supervisor", response_class=HTMLResponse)
 def supervisor_page(request: Request):
     """Supervisor Portal — 2D Fugitive Leak Triangulation & Workforce Ledger."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="supervisor.html")
 
 @app.get("/manager/scan", response_class=HTMLResponse)
 @app.get("/scan", response_class=HTMLResponse)
 def scan_page(request: Request):
     """Post-Scan Result & Interactive Triage Drawer with Live AI Camera Scanner."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="scan.html")
 
 @app.get("/control-room/workers/{worker_id}", response_class=HTMLResponse)
 @app.get("/manager/employees/{worker_id}", response_class=HTMLResponse)
 def worker_insights_page(request: Request, worker_id: str):
     """Worker / Employee Longitudinal Profile, 90-Day Trajectory & AI Query Drawer."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="worker_insights.html", context={"worker_id": worker_id})
 
 @app.get("/screener", response_class=HTMLResponse)
 def screener_page(request: Request):
     """Neuro-Olfactory Fatigue Screener."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="screener.html")
 
 @app.get("/lung-risk", response_class=HTMLResponse)
 def lung_risk_page(request: Request):
     """Chronic Occupational Lung-Risk Index."""
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="lung_risk.html")
 
 @app.get("/onboard", response_class=HTMLResponse)
 def onboard_page(request: Request):
-    if not templates:
-        return HTMLResponse("<h1>Templates directory not found</h1>")
+    if not templates or not os.path.exists(TEMPLATES_DIR):
+        return HTMLResponse(FALLBACK_HTML)
     return templates.TemplateResponse(request=request, name="index.html")
 
 # ----------------- AUTH & DEMO MODE ENDPOINTS -----------------
@@ -200,7 +212,7 @@ def demo_login(payload: DemoLoginRequest, response: Response, db: Session = Depe
     else:
         emp_id = payload.employee_id or "EMP-1042"
         emp = db.query(EmployeeModel).filter(EmployeeModel.worker_id == emp_id).first()
-        full_name = emp.full_name if emp else "Rajesh Kumar"
+        full_name = emp.full_name if emp else "Sumedh Kulkarni"
         plant_unit = emp.plant_unit if emp else "CDU-1"
         badge_id = emp.active_badge_id if emp else "BAND-1042-01"
 
@@ -244,7 +256,7 @@ def get_current_session(request: Request):
         "role": "EMPLOYEE",
         "user_id": "EMP-1042",
         "employee_id": "EMP-1042",
-        "full_name": "Rajesh Kumar",
+        "full_name": "Sumedh Kulkarni",
         "plant_unit": "CDU-1",
         "active_badge_id": "BAND-1042-01",
         "is_demo": True
@@ -319,6 +331,9 @@ def start_shift_checkin(payload: StartShiftRequest, db: Session = Depends(get_db
         "employee_name": emp.full_name,
         "plant_unit": payload.plant_unit,
         "start_delta_e": payload.start_delta_e,
+        "hazard_score_5pt": 0.0,
+        "hazard_level_simple": "SAFE / NORMAL",
+        "morning_checkin_time": datetime.now(timezone.utc).strftime("%I:%M %p"),
         "message": f"Start-of-shift baseline ΔE {payload.start_delta_e} logged for {emp.full_name}. Have a safe shift!"
     }
 
@@ -383,21 +398,23 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
         exposure_ledger=ExposureLedger(**worker_dict.get("exposure_ledger", {}))
     )
 
-    # 1. Deterministic Differential Math
-    diff_res = compute_differential_shift_dose(
-        start_delta_e=payload.start_delta_e,
-        end_delta_e=payload.end_delta_e,
-        patch_b_drift=payload.patch_b_drift,
-        patch_c_condition=payload.patch_c_condition, # type: ignore
-        shift_hours=payload.shift_duration_hours
-    )
-
-    # 2. Contextual Telemetry
+    # 1. Ingest Contextual Environmental Telemetry (Live Weather & Refinery Microclimate)
     weather = get_kinetic_weather()
     telemetry = ContextualEnvironmentalTelemetry(
         temperature_c=weather["temperature_c"],
         relative_humidity_pct=weather["relative_humidity_pct"],
         source=weather["source"]
+    )
+
+    # 2. Deterministic Differential Math with Arrhenius Kinetics & Humidity Scaling
+    diff_res = compute_differential_shift_dose(
+        start_delta_e=payload.start_delta_e,
+        end_delta_e=payload.end_delta_e,
+        patch_b_drift=payload.patch_b_drift,
+        patch_c_condition=payload.patch_c_condition, # type: ignore
+        shift_hours=payload.shift_duration_hours,
+        temperature_c=weather["temperature_c"],
+        relative_humidity_pct=weather["relative_humidity_pct"]
     )
 
     # 3. Update Rolling Ledger
@@ -428,6 +445,8 @@ def submit_shift_scan(payload: ScanSubmissionRequest, db: Session = Depends(get_
         updated_7day_load_high=updated_ledger["load_7d_high"],
         updated_7day_range_str=updated_ledger["range_7d_str"],
         statutory_tier=tier, # type: ignore
+        hazard_score_5pt=diff_res.get("hazard_score_5pt", 1.0),
+        hazard_level_simple=diff_res.get("hazard_level_simple", "SAFE / NORMAL"),
         measurement_confidence=diff_res["confidence"],
         badge_integrity_warning=diff_res["integrity_warning"],
         is_single_shift_critical=is_single_crit

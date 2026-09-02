@@ -14,7 +14,7 @@ class SessionUserResponse(BaseModel):
     role: str = "EMPLOYEE"
     user_id: str = "EMP-1042"
     employee_id: str = "EMP-1042"
-    full_name: str = "Rajesh Kumar"
+    full_name: str = "Sumedh Kulkarni"
     plant_unit: str = "CDU-1"
     active_badge_id: str = "BAND-1042-01"
     is_demo: bool = True

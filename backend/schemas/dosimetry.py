@@ -77,6 +77,8 @@ class ComputedMetrics(BaseModel):
     statutory_tier: Literal["TIER 1 (NORMAL)", "TIER 2 (CAUTION)", "TIER 3 (CRITICAL)"] = Field(
         ..., description="Statutory compliance and risk classification"
     )
+    hazard_score_5pt: float = Field(default=0.0, description="Intuitive 0.0 to 5.0 daily hazard score")
+    hazard_level_simple: str = Field(default="SAFE / NORMAL", description="Simplified status tag: SAFE / NORMAL, MODERATE / CAUTION, or DANGEROUS / CRITICAL")
     measurement_confidence: MeasurementConfidence = Field(default="HIGH", description="Confidence metric based on Patch B/C integrity")
     badge_integrity_warning: Optional[str] = Field(default=None, description="Warning if Patch B drift or Patch C compromised")
     is_single_shift_critical: bool = Field(default=False, description="Whether single-shift dose exceeded 20.0 ppm·hr upper bound")

@@ -11,7 +11,7 @@ def test_demo_login_employee():
     assert data["authenticated"] is True
     assert data["role"] == "EMPLOYEE"
     assert data["employee_id"] == "EMP-1042"
-    assert data["full_name"] == "Rajesh Kumar"
+    assert data["full_name"] == "Sumedh Kulkarni"
 
 def test_demo_login_manager():
     res = client.post("/api/auth/demo-login", json={"role": "manager"})

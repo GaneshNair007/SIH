@@ -28,8 +28,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${anton.variable} ${inter.variable}`}>
-      <body className="min-h-screen bg-warm-white text-charcoal font-sans antialiased selection:bg-yellow-golden selection:text-charcoal flex flex-col">
+    <html lang="en" suppressHydrationWarning className={`${anton.variable} ${inter.variable}`}>
+      <body suppressHydrationWarning className="min-h-screen bg-warm-white text-charcoal font-sans antialiased selection:bg-yellow-golden selection:text-charcoal flex flex-col">
         <AuthProvider>
           {children}
         </AuthProvider>

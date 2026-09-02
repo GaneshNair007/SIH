@@ -10,6 +10,7 @@ import { ManagerDashboardData, WorkerProfileData } from "@/lib/types";
 import ProtectedNavbar from "@/components/layout/ProtectedNavbar";
 import Footer from "@/components/layout/Footer";
 import BandScanner from "@/components/dashboard/BandScanner";
+import WorkerQrModal from "@/components/dashboard/WorkerQrModal";
 import { 
   Camera, 
   Users, 
@@ -22,7 +23,8 @@ import {
   RefreshCw,
   FileText,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  Printer
 } from "lucide-react";
 
 export default function ManagerPage() {
@@ -34,6 +36,12 @@ export default function ManagerPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [selectedWorkerForQr, setSelectedWorkerForQr] = useState<WorkerProfileData | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // SSE real-time updates
   const { connected, lastHeartbeat } = useSSE(() => {
@@ -82,8 +90,10 @@ export default function ManagerPage() {
               <h1 className="font-display text-3xl sm:text-4xl uppercase tracking-tight text-charcoal">
                 {user?.full_name || "Vikram Singh"} — {user?.role || "Shift Safety Lead"}
               </h1>
-              <div className="text-xs text-sage-muted mt-1 flex flex-wrap items-center gap-4">
-                <span>Date: {new Date().toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}</span>
+              <div className="text-xs text-sage-muted mt-1 flex flex-wrap items-center gap-4" suppressHydrationWarning>
+                <span suppressHydrationWarning>
+                  Date: {mounted ? new Date().toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" }) : "Today"}
+                </span>
                 <span>Workspace: Central Operations</span>
               </div>
             </div>
@@ -95,8 +105,8 @@ export default function ManagerPage() {
                   <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
                   <span>{connected ? "LIVE SSE STREAM" : "POLLING MODE"}</span>
                 </div>
-                <div className="text-[10px] text-sage-muted font-mono mt-0.5">
-                  Last Sync: {lastHeartbeat || new Date().toLocaleTimeString()}
+                <div className="text-[10px] text-sage-muted font-mono mt-0.5" suppressHydrationWarning>
+                  Last Sync: {lastHeartbeat || (mounted ? new Date().toLocaleTimeString() : "Live")}
                 </div>
               </div>
 
@@ -279,6 +289,7 @@ export default function ManagerPage() {
                     <th className="p-3.5">Active Wristband</th>
                     <th className="p-3.5">Lifecycle Day</th>
                     <th className="p-3.5">7-Day Load Range</th>
+                    <th className="p-3.5 text-center">Wristband QR</th>
                     <th className="p-3.5 pr-4 text-right">Action</th>
                   </tr>
                 </thead>
@@ -290,8 +301,25 @@ export default function ManagerPage() {
                       return (
                         <tr key={emp.worker_id} className="hover:bg-warm-white/60 transition-colors">
                           <td className="p-3.5 pl-4">
-                            <div className="font-bold text-sm text-charcoal">{emp.full_name}</div>
-                            <div className="text-[11px] font-mono text-sage-muted">{emp.worker_id}</div>
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl overflow-hidden shadow-sm shrink-0 border border-light-surface bg-warm-white flex items-center justify-center">
+                                {emp.worker_id === "EMP-1042" || emp.full_name?.toLowerCase().includes("sumedh") ? (
+                                  <img
+                                    src="/avatars/sumedh_kulkarni.jpg"
+                                    alt={emp.full_name}
+                                    className="w-full h-full object-cover object-top"
+                                  />
+                                ) : (
+                                  <span className="font-bold text-xs text-teal-deep font-mono">
+                                    {emp.full_name.substring(0, 2)}
+                                  </span>
+                                )}
+                              </div>
+                              <div>
+                                <div className="font-bold text-sm text-charcoal">{emp.full_name}</div>
+                                <div className="text-[11px] font-mono text-sage-muted">{emp.worker_id} · {emp.age || (emp.worker_id === "EMP-1042" ? 25 : 35)} yrs</div>
+                              </div>
+                            </div>
                           </td>
                           <td className="p-3.5">
                             <div className="font-semibold">{emp.plant_unit}</div>
@@ -316,6 +344,17 @@ export default function ManagerPage() {
                               {load.toFixed(1)} ppm·h
                             </span>
                           </td>
+                          <td className="p-3.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWorkerForQr(emp)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-warm-white hover:bg-yellow-golden/25 border border-light-surface hover:border-yellow-golden text-charcoal font-semibold text-xs rounded-lg transition-all shadow-sm group"
+                              title={`Generate & Print Wristband QR Sticker for ${emp.full_name} (${emp.worker_id})`}
+                            >
+                              <QrCode className="w-4 h-4 text-teal-deep group-hover:scale-110 transition-transform" />
+                              <span className="font-mono text-[11px] font-bold">Wristband QR</span>
+                            </button>
+                          </td>
                           <td className="p-3.5 pr-4 text-right">
                             <Link
                               href={`/workers/${emp.worker_id}`}
@@ -330,7 +369,7 @@ export default function ManagerPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-sage-muted text-xs">
+                      <td colSpan={7} className="p-8 text-center text-sage-muted text-xs">
                         No employees found matching &quot;{searchQuery}&quot;.
                       </td>
                     </tr>
@@ -340,6 +379,12 @@ export default function ManagerPage() {
             </div>
           </div>
         </div>
+
+        {/* Wristband QR Code Generator Modal */}
+        <WorkerQrModal
+          worker={selectedWorkerForQr}
+          onClose={() => setSelectedWorkerForQr(null)}
+        />
       </main>
       <Footer />
     </>

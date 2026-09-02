@@ -118,7 +118,7 @@ export default function LoginPage() {
                     </div>
                     <div>
                       <div className="text-xs font-mono font-bold text-sage-muted uppercase">Field Technician</div>
-                      <div className="text-sm font-bold text-charcoal">Rajesh Kumar (EMP-1042)</div>
+                      <div className="text-sm font-bold text-charcoal">Sumedh Kulkarni (EMP-1042)</div>
                       <div className="text-[11px] text-sage-muted">CDU-1 · Active Band-01</div>
                     </div>
                   </div>

@@ -54,7 +54,7 @@ export default function DashboardPreview() {
             <div className="flex items-center justify-between border-b border-sage/10 pb-3 mb-3">
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-yellow-golden" />
-                <span className="text-sm font-bold text-white">EMP-1042 — Rajesh Kumar</span>
+                <span className="text-sm font-bold text-white">EMP-1042 — Sumedh Kulkarni</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-teal-deep text-white font-mono">CDU-1 Operator</span>
               </div>
               <span className="text-xs font-mono text-emerald-400 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30">
