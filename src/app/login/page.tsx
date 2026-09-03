@@ -1,202 +1,155 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { useAuth, getDemoUser, getDefaultRoute } from "@/context/AuthContext";
-import { PROJECT, ROLES_DESCRIPTION } from "@/lib/content";
-import type { UserRole } from "@/types/domain";
-import PublicNav from "@/components/ui/PublicNav";
-import PublicFooter from "@/components/ui/PublicFooter";
-
-const DEMO_ROLES: { role: UserRole; label: string; description: string; icon: string }[] = [
-  {
-    role: "SHIFT_MANAGER",
-    label: ROLES_DESCRIPTION.shiftManager.title,
-    description: ROLES_DESCRIPTION.shiftManager.short,
-    icon: "📋",
-  },
-  {
-    role: "CONTROL_ROOM_MANAGER",
-    label: ROLES_DESCRIPTION.controlRoom.title,
-    description: ROLES_DESCRIPTION.controlRoom.short,
-    icon: "📊",
-  },
-  {
-    role: "ADMIN",
-    label: ROLES_DESCRIPTION.admin.title,
-    description: ROLES_DESCRIPTION.admin.short,
-    icon: "⚙️",
-  },
-];
+import { useAuth } from "@/context/AuthContext";
+import { authApi } from "@/lib/api/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, loginProduction, user } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const { user, isLoading, refreshSession } = useAuth();
+  
+  const [employeeId, setEmployeeId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (user) router.replace(getDefaultRoute(user.role));
-  }, [router, user]);
+  // Redirect if already logged in
+  if (!isLoading && user) {
+    if (user.role === "MANAGER") router.replace("/dashboard");
+    else router.replace("/scan");
+    return null;
+  }
 
-  const handleProductionLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  const handleDemoLogin = async (role: "manager" | "hse_officer" | "employee") => {
     setIsSubmitting(true);
-
-    const result = await loginProduction(email, password);
-    if (result.error) {
-      setError(result.error);
+    setError("");
+    try {
+      await authApi.demoLogin(role, role === "employee" ? employeeId || "EMP-1042" : undefined);
+      await refreshSession();
+      if (role === "manager" || role === "hse_officer") {
+        router.push("/dashboard");
+      } else {
+        router.push("/scan");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
       setIsSubmitting(false);
     }
   };
 
-  if (user) return null;
-
-  const handleDemoLogin = (role: UserRole) => {
-    const demoUser = getDemoUser(role);
-    login(demoUser);
-    router.push(getDefaultRoute(role));
+  const handleStandardLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!employeeId) return;
+    setIsSubmitting(true);
+    setError("");
+    try {
+      await authApi.standardLogin(employeeId);
+      await refreshSession();
+      // Simple routing based on prefix
+      if (employeeId.toLowerCase().includes("mgr") || employeeId.toLowerCase().includes("manager")) {
+        router.push("/dashboard");
+      } else {
+        router.push("/scan");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
+      setIsSubmitting(false);
+    }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-background">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-canvas">
-      <PublicNav />
-
-      <div className="pt-28 pb-section">
-        <div className="page-container max-w-lg">
-          {/* Header */}
-          <div className="text-center mb-10">
-            <div className="w-14 h-14 rounded-full bg-teal-pale flex items-center justify-center mx-auto mb-4">
-              <span className="text-teal text-lg font-bold">H₂S</span>
-            </div>
-            <h1 className="text-heading-1 text-charcoal font-serif mb-2">
-              Sign in
-            </h1>
-            <p className="text-body text-muted">
-              Access the {PROJECT.name} monitoring platform
-            </p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-surface-background p-4">
+      <div className="w-full max-w-md">
+        
+        {/* Brand / Logo */}
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 bg-primary text-white rounded-lg flex items-center justify-center mx-auto mb-4 text-xl font-bold shadow-elevation-1">
+            H₂S
           </div>
+          <h1 className="text-2xl font-medium text-text-primary">Rakshak AI</h1>
+          <p className="text-text-secondary text-sm mt-1">Occupational Safety Platform</p>
+        </div>
 
-          {/* Production login */}
-          <div className="card mb-8">
-            <form onSubmit={handleProductionLogin} className="space-y-4">
-              <div>
-                <label htmlFor="email" className="label">Email or Employee ID</label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="input"
-                  placeholder="name@company.com"
-                  autoComplete="email"
-                  required
-                />
+        {/* Standard Login Card */}
+        <div className="card p-6 mb-6">
+          <h2 className="text-lg font-medium text-text-primary mb-4">Sign In</h2>
+          <form onSubmit={handleStandardLogin} className="space-y-4">
+            <div>
+              <label htmlFor="employeeId" className="label">Employee ID or Username</label>
+              <input
+                id="employeeId"
+                type="text"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                className="input-field"
+                placeholder="e.g., EMP-1042 or MGR-01"
+                required
+              />
+            </div>
+            
+            {error && (
+              <div className="p-3 bg-status-errorBg border border-status-error text-status-error text-sm rounded-md">
+                {error}
               </div>
+            )}
+            
+            <button 
+              type="submit" 
+              disabled={isSubmitting || !employeeId}
+              className="btn-primary w-full"
+            >
+              {isSubmitting ? "Signing in..." : "Continue"}
+            </button>
+          </form>
+        </div>
 
-              <div>
-                <label htmlFor="password" className="label">Password</label>
-                <div className="relative">
-                  <input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input pr-12"
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-charcoal p-1"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                    ) : (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    )}
-                  </button>
-                </div>
+        {/* 1-Click Demo Section */}
+        <div className="card p-6 border border-dashed border-border bg-surface shadow-none">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-text-primary">Quick Demo Access</h3>
+            <span className="badge-warning">Hackathon Mode</span>
+          </div>
+          
+          <div className="space-y-3">
+            <button 
+              onClick={() => handleDemoLogin("manager")}
+              disabled={isSubmitting}
+              className="w-full flex items-center p-3 rounded border border-border hover:border-primary hover:bg-primary-light transition-all text-left"
+            >
+              <div className="w-10 h-10 rounded bg-primary-light text-primary flex items-center justify-center mr-3 shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
               </div>
-
-              {error && (
-                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn-primary w-full disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Signing in...
-                  </span>
-                ) : (
-                  "Sign in"
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Demo access — visually distinct */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="bg-canvas px-4 text-sm text-muted">or explore the demo</span>
-            </div>
-          </div>
-
-          <div className="mt-8 p-6 rounded-card border-2 border-dashed border-border bg-canvas-white">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="badge-elevated">Demo Mode</span>
-              <span className="text-xs text-muted">Synthetic data only — no real worker records</span>
-            </div>
-
-            <div className="space-y-3">
-              {DEMO_ROLES.map((dr) => (
-                <button
-                  key={dr.role}
-                  onClick={() => handleDemoLogin(dr.role)}
-                  className="w-full text-left p-4 rounded-lg border border-border bg-canvas-white hover:bg-canvas-subtle hover:border-border-strong transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{dr.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-charcoal group-hover:text-teal transition-colors">
-                        {dr.label}
-                      </div>
-                      <div className="text-xs text-muted truncate">{dr.description}</div>
-                    </div>
-                    <svg className="w-4 h-4 text-muted group-hover:text-teal transition-colors" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 4l4 4-4 4"/></svg>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="text-center mt-8">
-            <Link href="/" className="text-sm text-muted hover:text-teal transition-colors">
-              ← Back to home
-            </Link>
+              <div>
+                <div className="text-sm font-medium text-text-primary">Shift Manager</div>
+                <div className="text-xs text-text-secondary">Dashboard & Analytics</div>
+              </div>
+            </button>
+            
+            <button 
+              onClick={() => handleDemoLogin("employee")}
+              disabled={isSubmitting}
+              className="w-full flex items-center p-3 rounded border border-border hover:border-primary hover:bg-primary-light transition-all text-left"
+            >
+              <div className="w-10 h-10 rounded bg-primary-light text-primary flex items-center justify-center mr-3 shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-text-primary">Field Employee</div>
+                <div className="text-xs text-text-secondary">Dosimetry Check-in/out</div>
+              </div>
+            </button>
           </div>
         </div>
-      </div>
 
-      <PublicFooter />
+      </div>
     </div>
   );
 }

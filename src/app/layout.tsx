@@ -1,42 +1,13 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
 
-const inter = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-inter",
-  display: "swap",
-});
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  ),
-  title: "H₂S Dose Wristband | Passive Colorimetric Exposure Monitoring",
-  description:
-    "A passive wristband that records a colour response to H₂S exposure. Read the band with a smartphone and connect each reading to a worker's history.",
-  openGraph: {
-    title: "H₂S Dose Wristband",
-    description:
-      "Passive colour response · smartphone reading · worker history",
-    type: "website",
-    images: [
-      {
-        url: "/og.png",
-        width: 1200,
-        height: 630,
-        alt: "Concept illustration of the H₂S Dose Wristband with A, B and C colour patches",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "H₂S Dose Wristband",
-    description:
-      "Passive colour response · smartphone reading · worker history",
-    images: ["/og.png"],
-  },
+  title: "Rakshak AI | H₂S Safety Platform",
+  description: "Occupational H₂S Exposure Advisory & Plant Safety Intelligence Platform",
 };
 
 export default function RootLayout({
@@ -45,10 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${inter.variable} ${inter.className} bg-canvas text-charcoal min-h-screen antialiased`}
-      >
+    <html lang="en" className={inter.variable}>
+      <body className="font-sans bg-surface-background text-text-primary antialiased min-h-screen">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -7,15 +7,9 @@ import WorkerProfileContent from "@/components/operations/WorkerProfileContent";
 import { EmptyState, PageHeader, RecordLink, StatCard, StatusPill } from "@/components/operations/Primitives";
 import { mockStore } from "@/lib/mockStore";
 import { useDemoRevision } from "@/hooks/useDemoRevision";
-import type { UserRole } from "@/types/domain";
 
 type Surface = "manager" | "control-room" | "admin";
 
-const requiredRoles: Record<Surface, UserRole[]> = {
-  manager: ["SHIFT_MANAGER", "ADMIN"],
-  "control-room": ["CONTROL_ROOM_MANAGER", "ADMIN"],
-  admin: ["ADMIN"],
-};
 
 function WorkersList({ basePath }: { basePath: string }) {
   useDemoRevision();
@@ -88,5 +82,5 @@ export default function ResourcePage({ surface, segments }: { surface: Surface; 
   else if (section === "reports") content = <ReportsPage/>;
   else if (section === "analytics") content = <AnalyticsPage/>;
   else content = <EmptyState title="Page unavailable" detail="This route is not part of the approved operational map."/>;
-  return <AppShell requiredRoles={requiredRoles[surface]}>{content}</AppShell>;
+  return <AppShell>{content}</AppShell>;
 }

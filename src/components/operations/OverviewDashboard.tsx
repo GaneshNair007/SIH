@@ -7,7 +7,7 @@ import AppShell from "@/components/layout/AppShell";
 import { PageHeader, RecordLink, StatCard, StatusPill } from "@/components/operations/Primitives";
 import { mockStore } from "@/lib/mockStore";
 import { useDemoRevision } from "@/hooks/useDemoRevision";
-import type { UserRole } from "@/types/domain";
+
 
 type OverviewRole = "manager" | "control-room";
 
@@ -67,10 +67,9 @@ export default function OverviewDashboard({ role }: { role: OverviewRole }) {
   const activeShifts = visibleShifts.filter((shift) => shift.status === "ACTIVE");
   const activeBands = visibleBands.filter((band) => ["ACTIVE", "WARNING"].includes(band.status || ""));
   const openAlerts = visibleAlerts.filter((alert) => alert.status === "OPEN");
-  const requiredRoles: UserRole[] = role === "manager" ? ["SHIFT_MANAGER", "ADMIN"] : ["CONTROL_ROOM_MANAGER", "ADMIN"];
 
   return (
-    <AppShell requiredRoles={requiredRoles}>
+    <AppShell>
       <PageHeader
         eyebrow={role === "manager" ? "Shift operations" : "Recorded exposure overview"}
         title={role === "manager" ? "Run today’s band workflow" : "Control room overview"}

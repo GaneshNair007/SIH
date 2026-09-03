@@ -186,7 +186,7 @@ export default function ScanWorkflow() {
   const canContinue = [Boolean(band && worker && !error), Boolean(band && worker), Boolean(action), Boolean(location), Boolean(frameUrl), sampled.every(Boolean), true, true][step];
 
   return (
-    <AppShell requiredRoles={["SHIFT_MANAGER", "ADMIN"]}>
+    <AppShell>
       <PageHeader eyebrow="Guided capture" title="Scan band" description="Resolve identity first, capture only after an explicit camera action, and pair the end reading to its stored baseline." />
 
       <ol className="mb-6 flex gap-2 overflow-x-auto pb-2" aria-label="Scan progress">

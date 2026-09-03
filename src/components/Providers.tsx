@@ -10,8 +10,9 @@ export default function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            staleTime: 1000 * 60, // 1 minute
             retry: 1,
+            refetchOnWindowFocus: false,
           },
         },
       })

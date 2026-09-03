@@ -40,7 +40,8 @@ export default function AuthGuard({ children, requiredRoles, fallback }: AuthGua
     return null;
   }
 
-  if (requiredRoles && !requiredRoles.includes(user.role)) {
+  if (requiredRoles && !requiredRoles.includes(user.role as UserRole)) {
+    const roleDisplay = typeof user.role === "string" ? user.role.replace(/_/g, " ") : "UNKNOWN";
     return (
       <div className="min-h-screen bg-canvas flex items-center justify-center">
         <div className="card max-w-md text-center">
@@ -51,7 +52,7 @@ export default function AuthGuard({ children, requiredRoles, fallback }: AuthGua
           </div>
           <h2 className="text-heading-2 text-charcoal mb-2">Access Denied</h2>
           <p className="text-sm text-muted mb-4">
-            Your role ({user.role.replace(/_/g, " ")}) does not have permission to access this page.
+            Your role ({roleDisplay}) does not have permission to access this page.
           </p>
           <button onClick={() => router.back()} className="btn-secondary text-sm">
             Go back

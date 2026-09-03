@@ -1,15 +1,35 @@
-# Source decisions
+# Source Decisions & Scientific Conflicts
 
-This file records the decisions used when the sketch, platform specification, and chemistry notes do not say exactly the same thing.
+This document records the resolution of scientific and documentation conflicts in the H₂S Dose Wristband platform, explicitly distinguishing proposed research claims from currently validated operational behavior.
 
-- The protected application has three account roles: Shift Manager, Control Room Manager, and Admin. Workers are company-scoped records managed by authorized staff; the old demo worker-account screen is not part of the product.
-- The five-working-day rule from the platform specification is implemented as a configurable prototype operating policy. Calendar use-by dates and condition checks remain separate. A seven-day chemical life is not presented as experimentally guaranteed.
-- The A/B/C model is preserved: Patch A is reactive, Patch B is a sealed reference and integrity check, and Patch C is a condition indicator. Older reference-scale artwork is treated as proposed hardware, not an identical validated design.
-- A band reading represents the latest accumulated band response. Successive cumulative readings are never summed. A shift increment is derived from paired end and start estimates; negative differences and missing baselines are invalid states, not zero exposure.
-- Worker history aggregates only non-overlapping valid shift increments. Off-shift changes, missing baselines, and rejected readings remain visible.
-- A quantitative dose is shown only when an eligible calibration is present. Otherwise the interface preserves ΔE and says **Dose calibration unavailable**. Demo dose ranges are synthetic and remain labeled as such in the UI and exports.
-- Human colour-perception thresholds are not used as instrument detection limits. A low ΔE is retained as a measured colour difference and is not translated into “no exposure”.
-- A changed reference or condition patch is a validity concern. The interface does not claim that one photograph can identify the cause or timing of a seal failure.
-- Occupational limits are not reproduced in public copy. Concentration ceilings, time-weighted averages, and cumulative dose are different quantities and are not substituted for one another.
-- The published Zhang et al. paper supports laboratory test-paper statements only. Wristband packaging, skin isolation, cumulative reciprocity, batch calibration, field durability, and our team’s performance remain pending validation.
+## 1. Operational Lifespan & Expiry
+- **Decision**: We enforce the platform specification's **five-working-day** operational policy.
+- **Rationale**: This is a configurable prototype policy. While chemical literature describes a "seven-day expiry," that metric is not experimentally guaranteed in field conditions. Calendar use-by dates and physical patch condition checks (Patch C) are tracked independently from this policy.
 
+## 2. Hardware Model (A/B/C Patches)
+- **Decision**: The A/B/C operational model is preserved in the software workflow.
+- **Rationale**: Any older reference-scale artwork is considered "proposed." The software expects exactly three patches: Patch A (active reactive), Patch B (sealed reference), and Patch C (condition indicator).
+
+## 3. Cumulative Response vs. Summation
+- **Decision**: Successive cumulative readings are **not** summed.
+- **Rationale**: The optical change (ΔE) on the band already represents the accumulated response. Shift dose is derived mathematically from paired end-of-shift and start-of-shift estimates. Negative differences or excessive uncertainty are handled via explicit exception workflows, not hidden in summations.
+
+## 4. Worker History Aggregation
+- **Decision**: Worker history aggregates non-overlapping, valid shift increments only.
+- **Rationale**: Off-shift changes or missing baselines must remain explicitly visible in the ledger. The system will not invent allocation for untracked periods.
+
+## 5. Calibration and "Dose"
+- **Decision**: Quantitative exposure dose requires an eligible, validated calibration curve.
+- **Rationale**: Cumulative color permanence does not inherently establish a concentration × time metric. If a calibration is unavailable, the UI will display the raw `ΔE` (or an exposure index) explicitly labeled "Dose calibration unavailable."
+
+## 6. Detection Limits and Human Perceptibility
+- **Decision**: A ΔE of 3.3 (human perceptibility threshold) is not used as an established instrument detection limit.
+- **Rationale**: Any cutoff is considered provisional until validated. A value below the cutoff does not guarantee "no exposure" and will not be translated as such.
+
+## 7. Patch Seal Failure Diagnosis
+- **Decision**: We do not claim the exact cause or timing of seal failure can be diagnosed from a single photograph.
+- **Rationale**: A changed reference patch (Patch B) flags a validity concern. It invalidates the reading but does not provide diagnostic forensics on the breach event.
+
+## 8. Statutory Occupational Limits
+- **Decision**: System alerts distinguish strictly between concentration ceilings, Time-Weighted Averages (TWA), and cumulative dose.
+- **Rationale**: The UI does not publish "safe limits" copied verbatim from unverified documents. All limits align with authoritative sources and their explicit definitions.
